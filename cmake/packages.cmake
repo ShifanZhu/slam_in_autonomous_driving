@@ -33,19 +33,27 @@ include_directories(${PCL_INCLUDE_DIRS})
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
-# g2o 使用thirdparty中的
-include_directories(${PROJECT_SOURCE_DIR}/thirdparty/g2o/)
+# Original
+# # g2o 使用thirdparty中的
+# include_directories(${PROJECT_SOURCE_DIR}/thirdparty/g2o/)
+# set(g2o_libs
+#         ${PROJECT_SOURCE_DIR}/thirdparty/g2o/lib/libg2o_stuff.so
+#         ${PROJECT_SOURCE_DIR}/thirdparty/g2o/lib/libg2o_core.so
+# 	# ${PROJECT_SOURCE_DIR}/thirdparty/g2o/lib/libg2o_solver_cholmod.so
+#         ${PROJECT_SOURCE_DIR}/thirdparty/g2o/lib/libg2o_solver_dense.so
+#         ${PROJECT_SOURCE_DIR}/thirdparty/g2o/lib/libg2o_solver_csparse.so
+#         ${PROJECT_SOURCE_DIR}/thirdparty/g2o/lib/libg2o_csparse_extension.so
+#         ${PROJECT_SOURCE_DIR}/thirdparty/g2o/lib/libg2o_types_sba.so
+#         ${CSPARSE_LIBRARY}
+#         ${CHOLMOD_LIBRARY}
+#         )
+
+# G2O
+find_package(G2O REQUIRED)
+include_directories(${G2O_INCLUDE_DIRS})
 set(g2o_libs
-        ${PROJECT_SOURCE_DIR}/thirdparty/g2o/lib/libg2o_stuff.so
-        ${PROJECT_SOURCE_DIR}/thirdparty/g2o/lib/libg2o_core.so
-	# ${PROJECT_SOURCE_DIR}/thirdparty/g2o/lib/libg2o_solver_cholmod.so
-        ${PROJECT_SOURCE_DIR}/thirdparty/g2o/lib/libg2o_solver_dense.so
-        ${PROJECT_SOURCE_DIR}/thirdparty/g2o/lib/libg2o_solver_csparse.so
-        ${PROJECT_SOURCE_DIR}/thirdparty/g2o/lib/libg2o_csparse_extension.so
-        ${PROJECT_SOURCE_DIR}/thirdparty/g2o/lib/libg2o_types_sba.so
-        ${CSPARSE_LIBRARY}
-        ${CHOLMOD_LIBRARY}
-        )
+        g2o_core g2o_stuff g2o_types_sba g2o_solver_csparse g2o_csparse_extension g2o_types_slam3d
+)
 
 # ros
 # 为了2D scan, pointcloud2

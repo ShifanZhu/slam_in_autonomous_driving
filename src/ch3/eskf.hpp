@@ -275,7 +275,7 @@ bool ESKF<S>::ObserveWheelSpeed(const Odom& odom) {
     VecT vel_odom(average_vel, 0.0, 0.0);
     VecT vel_world = R_ * vel_odom;
 
-    dx_ = K * (vel_world - v_);
+    dx_ = K * (vel_world - v_); // 3.68
 
     // update cov
     cov_ = (Mat18T::Identity() - K * H) * cov_;
@@ -309,7 +309,7 @@ bool ESKF<S>::ObserveSE3(const SE3& pose, double trans_noise, double ang_noise) 
     /// 既有旋转，也有平移
     /// 观测状态变量中的p, R，H为6x18，其余为零
     Eigen::Matrix<S, 6, 18> H = Eigen::Matrix<S, 6, 18>::Zero();
-    H.template block<3, 3>(0, 0) = Mat3T::Identity();  // P部分
+    H.template block<3, 3>(0, 0) = Mat3T::Identity();  // P部分 (3.70)
     H.template block<3, 3>(3, 6) = Mat3T::Identity();  // R部分（3.66)
 
     // 卡尔曼增益和更新过程
@@ -321,7 +321,7 @@ bool ESKF<S>::ObserveSE3(const SE3& pose, double trans_noise, double ang_noise) 
 
     // 更新x和cov
     Vec6d innov = Vec6d::Zero();
-    innov.template head<3>() = (pose.translation() - p_);          // 平移部分
+    innov.template head<3>() = (pose.translation() - p_);          // 平移部分(3.67)
     innov.template tail<3>() = (R_.inverse() * pose.so3()).log();  // 旋转部分(3.67)
 
     dx_ = K * innov;
