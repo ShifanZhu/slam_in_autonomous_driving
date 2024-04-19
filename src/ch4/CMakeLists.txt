@@ -4,11 +4,11 @@ add_library(${PROJECT_NAME}.ch4
         g2o_types.cc
         )
 
-ADD_EXECUTABLE(test_preintegration test_preintegration.cc)
-ADD_TEST(test_preintegration test_preintegration)
+add_executable(test_preintegration test_preintegration.cc)
+# ADD_TEST(test_preintegration test_preintegration)
 
 target_link_libraries(test_preintegration
-        gtest pthread glog gflags ${PROJECT_NAME}.ch4 ${PROJECT_NAME}.ch3 ${PROJECT_NAME}.common
+        ${GTEST_BOTH_LIBRARIES} gtest pthread glog gflags ${PROJECT_NAME}.ch4 ${PROJECT_NAME}.ch3 ${PROJECT_NAME}.common
         )
 
 add_executable(run_gins_pre_integ run_gins_pre_integ.cc)

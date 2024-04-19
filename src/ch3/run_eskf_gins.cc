@@ -68,8 +68,9 @@ int main(int argc, char** argv) {
     bool first_gnss_set = false;
     Vec3d origin = Vec3d::Zero();
 
+    // Set all these process callback functions in IO.
     io.SetIMUProcessFunc([&](const sad::IMU& imu) {
-          /// IMU 处理函数
+          /// IMU 处理函数. Static initilization first
           if (!imu_init.InitSuccess()) {
               imu_init.AddIMU(imu);
               return;
@@ -79,7 +80,7 @@ int main(int argc, char** argv) {
           if (!imu_inited) {
               // 读取初始零偏，设置ESKF
               sad::ESKFD::Options options;
-              // 噪声由初始化器估计
+              // 噪声由静止初始化器估计
               options.gyro_var_ = sqrt(imu_init.GetCovGyro()[0]);
               options.acce_var_ = sqrt(imu_init.GetCovAcce()[0]);
               eskf.SetInitialConditions(options, imu_init.GetInitBg(), imu_init.GetInitBa(), imu_init.GetGravity());
@@ -111,13 +112,13 @@ int main(int argc, char** argv) {
             if (!imu_inited) {
                 return;
             }
-
+            // gnss_convert stores the converted GNSS data for following use.
             sad::GNSS gnss_convert = gnss;
             if (!sad::ConvertGps2UTM(gnss_convert, antenna_pos, FLAGS_antenna_angle) || !gnss_convert.heading_valid_) {
                 return;
             }
 
-            /// 去掉原点
+            /// 得到第一帧的原点，并去掉原点
             if (!first_gnss_set) {
                 origin = gnss_convert.utm_pose_.translation();
                 first_gnss_set = true;

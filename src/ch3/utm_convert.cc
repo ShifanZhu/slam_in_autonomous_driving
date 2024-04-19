@@ -42,7 +42,7 @@ bool ConvertGps2UTM(GNSS& gps_msg, const Vec2d& antenna_pos, const double& anten
         heading = (90 - gps_msg.heading_) * math::kDEG2RAD;  // 北东地转到东北天
     }
 
-    /// TWG 转到 TWB
+    /// TWG 转到 TWB. This is a fixed transformation.
     SE3 TBG(SO3::rotZ(antenna_angle * math::kDEG2RAD), Vec3d(antenna_pos[0], antenna_pos[1], 0));
     SE3 TGB = TBG.inverse();
 
@@ -50,8 +50,8 @@ bool ConvertGps2UTM(GNSS& gps_msg, const Vec2d& antenna_pos, const double& anten
     double x = utm_rtk.xy_[0] - map_origin[0];
     double y = utm_rtk.xy_[1] - map_origin[1];
     double z = utm_rtk.z_ - map_origin[2];
-    SE3 TWG(SO3::rotZ(heading), Vec3d(x, y, z));
-    SE3 TWB = TWG * TGB;
+    SE3 TWG(SO3::rotZ(heading), Vec3d(x, y, z)); // Antenna pose in UTM
+    SE3 TWB = TWG * TGB; // Vehicle body pose in UTM
 
     gps_msg.utm_valid_ = true;
     gps_msg.utm_.xy_[0] = TWB.translation().x();

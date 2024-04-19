@@ -30,16 +30,16 @@ void EdgeInertial::computeError() {
     const Vec3d dp = preint_->GetDeltaPosition(bg, ba);
 
     /// 预积分误差项（4.41）
-    const Vec3d er = (dR.inverse() * p1->estimate().so3().inverse() * p2->estimate().so3()).log();
+    const Vec3d er = (dR.inverse() * p1->estimate().so3().inverse() * p2->estimate().so3()).log(); // 4.41a
     Mat3d RiT = p1->estimate().so3().inverse().matrix();
-    const Vec3d ev = RiT * (v2->estimate() - v1->estimate() - grav_ * dt_) - dv;
+    const Vec3d ev = RiT * (v2->estimate() - v1->estimate() - grav_ * dt_) - dv; // 4.41b
     const Vec3d ep = RiT * (p2->estimate().translation() - p1->estimate().translation() - v1->estimate() * dt_ -
-                            grav_ * dt_ * dt_ / 2) -
-                     dp;
+                            grav_ * dt_ * dt_ / 2) - dp; // 4.41c
     _error << er, ev, ep;
 }
 
 void EdgeInertial::linearizeOplus() {
+    // * 连接6个顶点：上一帧的pose, v, bg, ba，下一帧的pose, v
     auto* p1 = dynamic_cast<const VertexPose*>(_vertices[0]);
     auto* v1 = dynamic_cast<const VertexVelocity*>(_vertices[1]);
     auto* bg1 = dynamic_cast<const VertexGyroBias*>(_vertices[2]);
@@ -73,8 +73,13 @@ void EdgeInertial::linearizeOplus() {
     const Vec3d er = eR.log();
     const Mat3d invJr = SO3::jr_inv(eR);
 
+    //  * 预积分边
+    // * 连接6个顶点：上一帧的pose, v, bg, ba，下一帧的pose, v
+    // * 观测量为9维，即预积分残差, 顺序：R, v, p
+    // * information从预积分类中获取，构造函数中计算
+
     /// 雅可比矩阵
-    /// 注意有3个index, 顶点的，自己误差的，顶点内部变量的
+    /// 注意有3种index, 顶点的(_vertices[*] or _jacobianOplus[*])，残差的(eR, ev, ep)，顶点内部变量的(order in _jacobianOplus[0])
     /// 变量顺序：pose1(R1,p1), v1, bg1, ba1, pose2(R2,p2), v2
     /// 残差顺序：eR, ev, ep，残差顺序为行，变量顺序为列
 
@@ -94,7 +99,6 @@ void EdgeInertial::linearizeOplus() {
     _jacobianOplus[0].block<3, 3>(3, 0) = SO3::hat(R1T * (vj - vi - grav_ * dt_));
     // dp/dR1, 4.48d
     _jacobianOplus[0].block<3, 3>(6, 0) = SO3::hat(R1T * (pj - pi - v1->estimate() * dt_ - 0.5 * grav_ * dt_ * dt_));
-
     /// 残差对p1, 9x3
     // dp/dp1, 4.48a
     _jacobianOplus[0].block<3, 3>(6, 3) = -R1T.matrix();
@@ -106,30 +110,30 @@ void EdgeInertial::linearizeOplus() {
     // dp/dv1, 4.48c
     _jacobianOplus[1].block<3, 3>(6, 0) = -R1T.matrix() * dt_;
 
-    /// 残差对bg1
+    /// 残差对bg1, 9x3
     _jacobianOplus[2].setZero();
     // dR/dbg1, 4.45
     _jacobianOplus[2].block<3, 3>(0, 0) = -invJr * eR.inverse().matrix() * SO3::jr((dR_dbg * dbg).eval()) * dR_dbg;
-    // dv/dbg1
+    // dv/dbg1, -4.39c
     _jacobianOplus[2].block<3, 3>(3, 0) = -dv_dbg;
-    // dp/dbg1
+    // dp/dbg1, -4.39e
     _jacobianOplus[2].block<3, 3>(6, 0) = -dp_dbg;
 
-    /// 残差对ba1
+    /// 残差对ba1, 9x3
     _jacobianOplus[3].setZero();
-    // dv/dba1
+    // dv/dba1, -4.39b
     _jacobianOplus[3].block<3, 3>(3, 0) = -dv_dba;
-    // dp/dba1
+    // dp/dba1, -4.39d
     _jacobianOplus[3].block<3, 3>(6, 0) = -dp_dba;
 
-    /// 残差对pose2
+    /// 残差对pose2, 9x3
     _jacobianOplus[4].setZero();
     // dr/dr2, 4.43
     _jacobianOplus[4].block<3, 3>(0, 0) = invJr;
     // dp/dp2, 4.48b
     _jacobianOplus[4].block<3, 3>(6, 3) = R1T.matrix();
 
-    /// 残差对v2
+    /// 残差对v2, 9x3
     _jacobianOplus[5].setZero();
     // dv/dv2, 4,46b
     _jacobianOplus[5].block<3, 3>(3, 0) = R1T.matrix();  // OK

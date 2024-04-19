@@ -31,7 +31,7 @@ bool ConvertGps2UTMOnlyTrans(GNSS& gnss_reading);
  * 经纬度转UTM
  * NOTE 经纬度单位为度数
  * @param latlon
- * @param utm_coor
+   * @param utm_coor
  * @return
  */
 bool LatLon2UTM(const Vec2d& latlon, UTMCoordinate& utm_coor);

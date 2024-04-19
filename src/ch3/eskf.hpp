@@ -45,8 +45,8 @@ class ESKF {
         /// IMU 测量与零偏参数
         double imu_dt_ = 0.01;  // IMU测量间隔
         // NOTE IMU噪声项都为离散时间，不需要再乘dt，可以由初始化器指定IMU噪声
-        double gyro_var_ = 1e-5;       // 陀螺测量标准差
-        double acce_var_ = 1e-2;       // 加计测量标准差
+        double gyro_var_ = 1e-5;       // 陀螺测量标准差 (可以通过IMU静止，假设陀螺零偏不动，估计得到)
+        double acce_var_ = 1e-2;       // 加计测量标准差 (可以通过IMU静止，假设陀螺零偏不动，估计得到)
         double bias_gyro_var_ = 1e-6;  // 陀螺零偏游走标准差
         double bias_acce_var_ = 1e-4;  // 加计零偏游走标准差
 
@@ -158,29 +158,35 @@ class ESKF {
 
     /// 更新名义状态变量，重置error state
     void UpdateAndReset() {
+        // dx is 18*1: position, velocity, rotation, bias_gyro, bias_acce, gravity
+        // 3.51c
         p_ += dx_.template block<3, 1>(0, 0);
         v_ += dx_.template block<3, 1>(3, 0);
         R_ = R_ * SO3::exp(dx_.template block<3, 1>(6, 0));
 
+        // If we update bias
         if (options_.update_bias_gyro_) {
             bg_ += dx_.template block<3, 1>(9, 0);
+            // LOG(INFO) << "update bg: " << bg_.transpose();
         }
 
         if (options_.update_bias_acce_) {
             ba_ += dx_.template block<3, 1>(12, 0);
+            // LOG(INFO) << "update ba: " << ba_.transpose();
         }
 
-        g_ += dx_.template block<3, 1>(15, 0);
+        g_ += dx_.template block<3, 1>(15, 0); //? why we update gravity since its derivetive is zero 3.25f?
+        //// LOG(INFO) << "update delta g: " << dx_.template block<3, 1>(15, 0).transpose();
 
-        ProjectCov();
-        dx_.setZero();
+        ProjectCov(); // 3.63
+        dx_.setZero(); //? why we set dx to zero?
     }
 
     /// 对P阵进行投影，参考式(3.63)
     void ProjectCov() {
         Mat18T J = Mat18T::Identity();
-        J.template block<3, 3>(6, 6) = Mat3T::Identity() - 0.5 * SO3::hat(dx_.template block<3, 1>(6, 0));
-        cov_ = J * cov_ * J.transpose();
+        J.template block<3, 3>(6, 6) = Mat3T::Identity() - 0.5 * SO3::hat(dx_.template block<3, 1>(6, 0)); // 3.61
+        cov_ = J * cov_ * J.transpose(); // 3.63
     }
 
     /// 成员变量
@@ -195,6 +201,7 @@ class ESKF {
     VecT g_{0, 0, -9.8};
 
     /// 误差状态
+    // dx is 18*1: position, velocity, rotation, bias_gyro, bias_acce, gravity
     Vec18T dx_ = Vec18T::Zero();
 
     /// 协方差阵
@@ -227,10 +234,10 @@ bool ESKF<S>::Predict(const IMU& imu) {
         return false;
     }
 
-    // nominal state 递推
-    VecT new_p = p_ + v_ * dt + 0.5 * (R_ * (imu.acce_ - ba_)) * dt * dt + 0.5 * g_ * dt * dt;
-    VecT new_v = v_ + R_ * (imu.acce_ - ba_) * dt + g_ * dt;
-    SO3 new_R = R_ * SO3::exp((imu.gyro_ - bg_) * dt);
+    // nominal state 递推 (3.41)
+    VecT new_p = p_ + v_ * dt + 0.5 * (R_ * (imu.acce_ - ba_)) * dt * dt + 0.5 * g_ * dt * dt; // 3.41a
+    VecT new_v = v_ + R_ * (imu.acce_ - ba_) * dt + g_ * dt; // 3.41b
+    SO3 new_R = R_ * SO3::exp((imu.gyro_ - bg_) * dt); // 3.41c Right multiply because IMU data is in local frame
 
     R_ = new_R;
     v_ = new_v;
@@ -239,7 +246,7 @@ bool ESKF<S>::Predict(const IMU& imu) {
 
     // error state 递推
     // 计算运动过程雅可比矩阵 F，见(3.47)
-    // F实际上是稀疏矩阵，也可以不用矩阵形式进行相乘而是写成散装形式，这里为了教学方便，使用矩阵形式
+    // F实际上是稀疏矩阵，也可以不用矩阵形式进行相乘而是写成散装形式(faster)，这里为了教学方便，使用矩阵形式
     Mat18T F = Mat18T::Identity();                                                 // 主对角线
     F.template block<3, 3>(0, 3) = Mat3T::Identity() * dt;                         // p 对 v
     F.template block<3, 3>(3, 6) = -R_.matrix() * SO3::hat(imu.acce_ - ba_) * dt;  // v对theta
@@ -250,7 +257,7 @@ bool ESKF<S>::Predict(const IMU& imu) {
 
     // mean and cov prediction
     dx_ = F * dx_;  // 这行其实没必要算，dx_在重置之后应该为零，因此这步可以跳过，但F需要参与Cov部分计算，所以保留
-    cov_ = F * cov_.eval() * F.transpose() + Q_;
+    cov_ = F * cov_.eval() * F.transpose() + Q_; // P_pred: Predicted Covariance (3.48b)
     current_time_ = imu.timestamp_;
     return true;
 }
@@ -261,7 +268,7 @@ bool ESKF<S>::ObserveWheelSpeed(const Odom& odom) {
     // odom 修正以及雅可比
     // 使用三维的轮速观测，H为3x18，大部分为零
     Eigen::Matrix<S, 3, 18> H = Eigen::Matrix<S, 3, 18>::Zero();
-    H.template block<3, 3>(0, 3) = Mat3T::Identity();
+    H.template block<3, 3>(0, 3) = Mat3T::Identity(); // only have direct observation on velocity
 
     // 卡尔曼增益
     Eigen::Matrix<S, 18, 3> K = cov_ * H.transpose() * (H * cov_ * H.transpose() + odom_noise_).inverse();
@@ -289,6 +296,7 @@ bool ESKF<S>::ObserveGps(const GNSS& gnss) {
     /// GNSS 观测的修正
     assert(gnss.unix_time_ >= current_time_);
 
+    // Store first gnsss pose and time
     if (first_gnss_) {
         R_ = gnss.utm_pose_.so3();
         p_ = gnss.utm_pose_.translation();
@@ -297,8 +305,8 @@ bool ESKF<S>::ObserveGps(const GNSS& gnss) {
         return true;
     }
 
-    assert(gnss.heading_valid_);
-    ObserveSE3(gnss.utm_pose_, options_.gnss_pos_noise_, options_.gnss_ang_noise_);
+    assert(gnss.heading_valid_); // RTK heading should be valid
+    ObserveSE3(gnss.utm_pose_, options_.gnss_pos_noise_, options_.gnss_ang_noise_); // We can observe SE3 directly
     current_time_ = gnss.unix_time_;
 
     return true;
@@ -306,28 +314,32 @@ bool ESKF<S>::ObserveGps(const GNSS& gnss) {
 
 template <typename S>
 bool ESKF<S>::ObserveSE3(const SE3& pose, double trans_noise, double ang_noise) {
-    /// 既有旋转，也有平移
+    /// 观测到的状态：既有旋转，也有平移
     /// 观测状态变量中的p, R，H为6x18，其余为零
-    Eigen::Matrix<S, 6, 18> H = Eigen::Matrix<S, 6, 18>::Zero();
+    Eigen::Matrix<S, 6, 18> H = Eigen::Matrix<S, 6, 18>::Zero(); // Jacobian of observation model w.r.t. error state
     H.template block<3, 3>(0, 0) = Mat3T::Identity();  // P部分 (3.70)
     H.template block<3, 3>(3, 6) = Mat3T::Identity();  // R部分（3.66)
 
     // 卡尔曼增益和更新过程
+
+    // V is the covariance matrix of the observation noise (gnss_pos_noise_, gnss_ang_noise_)
     Vec6d noise_vec;
     noise_vec << trans_noise, trans_noise, trans_noise, ang_noise, ang_noise, ang_noise;
-
     Mat6d V = noise_vec.asDiagonal();
-    Eigen::Matrix<S, 18, 6> K = cov_ * H.transpose() * (H * cov_ * H.transpose() + V).inverse();
+
+    // cov_ is P_pred
+    Eigen::Matrix<S, 18, 6> K = cov_ * H.transpose() * (H * cov_ * H.transpose() + V).inverse(); // 3.51a
 
     // 更新x和cov
-    Vec6d innov = Vec6d::Zero();
+    // z - h(x_pred)
+    Vec6d innov = Vec6d::Zero(); // innovation
     innov.template head<3>() = (pose.translation() - p_);          // 平移部分(3.67)
     innov.template tail<3>() = (R_.inverse() * pose.so3()).log();  // 旋转部分(3.67)
+    // dx is 18*1: position, velocity, rotation, bias_gyro, bias_acce, gravity
+    dx_ = K * innov; // 3.51b
+    cov_ = (Mat18T::Identity() - K * H) * cov_;  // Corrected covariance (3.51d)
 
-    dx_ = K * innov;
-    cov_ = (Mat18T::Identity() - K * H) * cov_;
-
-    UpdateAndReset();
+    UpdateAndReset(); // Apply 3.51c
     return true;
 }
 

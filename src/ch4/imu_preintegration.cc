@@ -17,10 +17,10 @@ void IMUPreintegration::Integrate(const IMU &imu, double dt) {
     Vec3d acc = imu.acce_ - ba_;  // 加计
 
     // 更新dv, dp, 见(4.13), (4.16)
-    dp_ = dp_ + dv_ * dt + 0.5f * dR_.matrix() * acc * dt * dt;
-    dv_ = dv_ + dR_ * acc * dt;
+    dp_ = dp_ + dv_ * dt + 0.5f * dR_.matrix() * acc * dt * dt; // 4.16
+    dv_ = dv_ + dR_ * acc * dt; // 4.13
 
-    // dR先不更新，因为A, B阵还需要现在的dR
+    // dR先不更新，因为运动方程的系数矩阵A, B阵还需要现在的dR
 
     // 运动方程雅可比矩阵系数，A,B阵，见(4.29)
     // 另外两项在后面
@@ -32,7 +32,8 @@ void IMUPreintegration::Integrate(const IMU &imu, double dt) {
     Mat3d acc_hat = SO3::hat(acc);
     double dt2 = dt * dt;
 
-    // NOTE A, B左上角块与公式稍有不同
+    // NOTE A, B左上角块与公式稍有不同 （4.30）
+    //? A书中左上角是 dR_，此处是单位阵；B书中左上角是J*dt，此处是0 why?
     A.block<3, 3>(3, 0) = -dR_.matrix() * dt * acc_hat;
     A.block<3, 3>(6, 0) = -0.5f * dR_.matrix() * acc_hat * dt2;
     A.block<3, 3>(6, 3) = dt * Mat3d::Identity();
@@ -40,7 +41,7 @@ void IMUPreintegration::Integrate(const IMU &imu, double dt) {
     B.block<3, 3>(3, 3) = dR_.matrix() * dt;
     B.block<3, 3>(6, 3) = 0.5f * dR_.matrix() * dt2;
 
-    // 更新各雅可比，见式(4.39)
+    // 更新各雅可比，见式(4.39)。因为dP_dba_的更新用的是j-1时刻的dV_dba_，所以要先更新dP_dba_
     dP_dba_ = dP_dba_ + dV_dba_ * dt - 0.5f * dR_.matrix() * dt2;                      // (4.39d)
     dP_dbg_ = dP_dbg_ + dV_dbg_ * dt - 0.5f * dR_.matrix() * dt2 * acc_hat * dR_dbg_;  // (4.39e)
     dV_dba_ = dV_dba_ - dR_.matrix() * dt;                                             // (4.39b)

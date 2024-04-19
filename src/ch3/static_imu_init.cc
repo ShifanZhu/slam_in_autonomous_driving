@@ -68,14 +68,17 @@ bool StaticIMUInit::TryInit() {
     Vec3d mean_gyro, mean_acce;
     math::ComputeMeanAndCovDiag(init_imu_deque_, mean_gyro, cov_gyro_, [](const IMU& imu) { return imu.gyro_; });
     math::ComputeMeanAndCovDiag(init_imu_deque_, mean_acce, cov_acce_, [this](const IMU& imu) { return imu.acce_; });
+    LOG(INFO) << "mean acce with bias: " << mean_acce.transpose();
 
-    // 以acce均值为方向，取9.8长度为重力
-    LOG(INFO) << "mean acce: " << mean_acce.transpose();
-    gravity_ = -mean_acce / mean_acce.norm() * options_.gravity_norm_;
+    // 以acce均值为方向，取9.81长度为重力
+    gravity_ = -mean_acce / mean_acce.norm() * options_.gravity_norm_; // Note there is a *minus* sign here
+    //// LOG(INFO) << "gravity: " << gravity_.transpose();
+    //// LOG(INFO) << "first imu acc orig: " << init_imu_deque_[0].acce_.transpose();
 
     // 重新计算加计的协方差
     math::ComputeMeanAndCovDiag(init_imu_deque_, mean_acce, cov_acce_,
-                                [this](const IMU& imu) { return imu.acce_ + gravity_; });
+        [this](const IMU& imu) { return imu.acce_ + gravity_; }); // Note the gravity term
+                                                                  // Now the mean_acce corresponds to the acc bias
 
     // 检查IMU噪声
     if (cov_gyro_.norm() > options_.max_static_gyro_var) {
@@ -91,12 +94,13 @@ bool StaticIMUInit::TryInit() {
     // 估计测量噪声和零偏
     init_bg_ = mean_gyro;
     init_ba_ = mean_acce;
+    //// LOG(INFO) << "first imu acc corr: " << init_imu_deque_[0].acce_.transpose() - init_ba_.transpose();
 
     LOG(INFO) << "IMU 初始化成功，初始化时间= " << current_time_ - init_start_time_ << ", bg = " << init_bg_.transpose()
               << ", ba = " << init_ba_.transpose() << ", gyro sq = " << cov_gyro_.transpose()
               << ", acce sq = " << cov_acce_.transpose() << ", grav = " << gravity_.transpose()
               << ", norm: " << gravity_.norm();
-    LOG(INFO) << "mean gyro: " << mean_gyro.transpose() << " acce: " << mean_acce.transpose();
+    LOG(INFO) << "bias gyro: " << mean_gyro.transpose() << " acce: " << mean_acce.transpose();
     init_success_ = true;
     return true;
 }

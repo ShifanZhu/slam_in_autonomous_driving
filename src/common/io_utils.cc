@@ -31,6 +31,7 @@ void TxtIO::Go() {
         std::string data_type;
         ss >> data_type;
 
+        // Process line by line. This assumes the data in in the same file and in time order.
         if (data_type == "IMU" && imu_proc_) {
             double time, gx, gy, gz, ax, ay, az;
             ss >> time >> gx >> gy >> gz >> ax >> ay >> az;
@@ -48,7 +49,7 @@ void TxtIO::Go() {
         }
     }
 
-    LOG(INFO) << "done.";
+    LOG(INFO) << "Done txt reading.";
 }
 
 std::string RosbagIO::GetLidarTopicName() const {

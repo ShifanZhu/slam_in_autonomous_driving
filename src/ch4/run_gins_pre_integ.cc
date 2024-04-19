@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
 
     /// 设置各类回调函数
     io.SetIMUProcessFunc([&](const sad::IMU& imu) {
-          /// IMU 处理函数
+          /// IMU 处理函数, static initialization
           if (!imu_init.InitSuccess()) {
               imu_init.AddIMU(imu);
               return;
@@ -107,6 +107,7 @@ int main(int argc, char** argv) {
       })
         .SetGNSSProcessFunc([&](const sad::GNSS& gnss) {
             /// GNSS 处理函数
+            // IMU should be inited first
             if (!imu_inited) {
                 return;
             }

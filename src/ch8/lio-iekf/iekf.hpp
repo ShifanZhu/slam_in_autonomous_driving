@@ -228,14 +228,14 @@ bool IESKF<S>::UpdateUsingCustomObserve(IESKF::CustomObsFunc obs) {
         // 调用obs function
         obs(GetNominalSE3(), HTVH, HTVr);
 
-        // 投影P
+        // 切空间的投影变换。J描述了P_pred到P的变换
         Mat18T J = Mat18T::Identity();
-        J.template block<3, 3>(6, 6) = Mat3T::Identity() - 0.5 * SO3::hat((R_.inverse() * start_R).log());
-        Pk = J * cov_ * J.transpose();
+        J.template block<3, 3>(6, 6) = Mat3T::Identity() - 0.5 * SO3::hat((R_.inverse() * start_R).log()); // 8.5
+        Pk = J * cov_ * J.transpose(); // 8.6
 
         // 卡尔曼更新
-        Qk = (Pk.inverse() + HTVH).inverse();  // 这个记作中间变量，最后更新时可以用
-        dx_ = Qk * HTVr;
+        Qk = (Pk.inverse() + HTVH).inverse();  // 这个记作中间变量，最后更新时可以用.  Qk其实是Kk  8.11
+        dx_ = Qk * HTVr; // 8.7b
         // LOG(INFO) << "iter " << iter << " dx = " << dx_.transpose() << ", dxn: " << dx_.norm();
 
         // dx合入名义变量

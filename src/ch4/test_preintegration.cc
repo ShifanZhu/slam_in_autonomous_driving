@@ -12,6 +12,7 @@
 #include "ch4/g2o_types.h"
 #include "common/g2o_types.h"
 #include "common/io_utils.h"
+#include "tools/ui/pangolin_window.h"
 
 #include <g2o/core/block_solver.h>
 #include <g2o/core/optimization_algorithm_gauss_newton.h>
@@ -25,14 +26,20 @@ DEFINE_double(antenna_pox_x, -0.17, "RTK天线安装偏移X");
 DEFINE_double(antenna_pox_y, -0.20, "RTK天线安装偏移Y");
 DEFINE_bool(with_ui, true, "是否显示图形界面");
 
+// 测试在恒定角速度运转下的预积分情况
 TEST(PREINTEGRATION_TEST, ROTATION_TEST) {
-    // 测试在恒定角速度运转下的预积分情况
     double imu_time_span = 0.01;       // IMU测量间隔
     Vec3d constant_omega(0, 0, M_PI);  // 角速度为180度/s，转1秒应该等于转180度
     Vec3d gravity(0, 0, -9.8);         // Z 向上，重力方向为负
 
     sad::NavStated start_status(0), end_status(1.0);
     sad::IMUPreintegration pre_integ;
+
+    std::shared_ptr<sad::ui::PangolinWindow> ui = nullptr;
+    if (FLAGS_with_ui) {
+        ui = std::make_shared<sad::ui::PangolinWindow>();
+        ui->Init();
+    }
 
     // 对比直接积分
     Sophus::SO3d R;
@@ -64,6 +71,11 @@ TEST(PREINTEGRATION_TEST, ROTATION_TEST) {
         EXPECT_NEAR(R.unit_quaternion().y(), this_status.R_.unit_quaternion().y(), 1e-4);
         EXPECT_NEAR(R.unit_quaternion().z(), this_status.R_.unit_quaternion().z(), 1e-4);
         EXPECT_NEAR(R.unit_quaternion().w(), this_status.R_.unit_quaternion().w(), 1e-4);
+
+        if (ui) {
+            ui->UpdateNavState(this_status);
+            usleep(1e2);
+        }
     }
 
     end_status = pre_integ.Predict(start_status);
@@ -80,8 +92,8 @@ TEST(PREINTEGRATION_TEST, ROTATION_TEST) {
     SUCCEED();
 }
 
+// 测试在恒定加速度运行下的预积分情况
 TEST(PREINTEGRATION_TEST, ACCELERATION_TEST) {
-    // 测试在恒定加速度运行下的预积分情况
     double imu_time_span = 0.01;     // IMU测量间隔
     Vec3d gravity(0, 0, -9.8);       // Z 向上，重力方向为负
     Vec3d constant_acce(0.1, 0, 0);  // x 方向上的恒定加速度

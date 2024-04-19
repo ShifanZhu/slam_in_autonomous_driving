@@ -76,13 +76,13 @@ void GinsPreInteg::AddGnss(const GNSS& gnss) {
         return;
     }
 
-    // 积分到GNSS时刻
+    // 积分到GNSS时刻. Note this is integration from last_imu_'s time to gnss time
     pre_integ_->Integrate(last_imu_, gnss.unix_time_ - current_time_);
 
     current_time_ = gnss.unix_time_;
     *this_frame_ = pre_integ_->Predict(*last_frame_, options_.gravity_);
 
-    Optimize();
+    Optimize(); // Only optimize when we observe GNSS
 
     last_frame_ = this_frame_;
     last_gnss_ = this_gnss_;
@@ -106,6 +106,8 @@ void GinsPreInteg::Optimize() {
         g2o::make_unique<BlockSolverType>(g2o::make_unique<LinearSolverType>()));
     g2o::SparseOptimizer optimizer;
     optimizer.setAlgorithm(solver);
+
+    // All vertices will be optimized by edge constraints
 
     // 上时刻顶点， pose, v, bg, ba
     auto v0_pose = new VertexPose();
@@ -149,7 +151,8 @@ void GinsPreInteg::Optimize() {
     v1_ba->setEstimate(this_frame_->ba_);
     optimizer.addVertex(v1_ba);
 
-    // 预积分边
+    // 预积分边: provide constraints for optimizing vertices
+    // EdgeInertial use pre_integ_ as input, so we do not need setMesurements()
     auto edge_inertial = new EdgeInertial(pre_integ_, options_.gravity_);
     edge_inertial->setVertex(0, v0_pose);
     edge_inertial->setVertex(1, v0_vel);
