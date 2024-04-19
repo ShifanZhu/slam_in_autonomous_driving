@@ -7,6 +7,7 @@
 
 #include "common/eigen_types.h"
 #include "common/gnss.h"
+#include "common/mocap.h"
 #include "common/imu.h"
 #include "common/math_utils.h"
 #include "common/nav_state.h"
@@ -96,6 +97,10 @@ class ESKF {
 
     /// 使用GPS观测
     bool ObserveGps(const GNSS& gnss);
+
+
+    /// 使用MoCap观测
+    bool ObserveMoCap(const MoCap& mocap);
 
     /**
      * 使用SE3进行观测
@@ -214,6 +219,7 @@ class ESKF {
 
     /// 标志位
     bool first_gnss_ = true;  // 是否为第一个gnss数据
+    bool first_mocap_ = true;  // 是否为第一个mocap数据
 
     /// 配置项
     Options options_;
@@ -308,6 +314,26 @@ bool ESKF<S>::ObserveGps(const GNSS& gnss) {
     assert(gnss.heading_valid_); // RTK heading should be valid
     ObserveSE3(gnss.utm_pose_, options_.gnss_pos_noise_, options_.gnss_ang_noise_); // We can observe SE3 directly
     current_time_ = gnss.unix_time_;
+
+    return true;
+}
+
+template <typename S>
+bool ESKF<S>::ObserveMoCap(const MoCap& mocap) {
+    /// MoCap 观测的修正
+    assert(mocap.timestamp_ >= current_time_);
+
+    // Store first mocap pose and time
+    if (first_mocap_) {
+        R_ = mocap.GetSO3();
+        p_ = mocap.position_;
+        first_mocap_ = false;
+        current_time_ = mocap.timestamp_;
+        return true;
+    }
+
+    ObserveSE3(mocap.GetSE3(), options_.gnss_pos_noise_, options_.gnss_ang_noise_); // We can observe SE3 directly
+    current_time_ = mocap.timestamp_;
 
     return true;
 }

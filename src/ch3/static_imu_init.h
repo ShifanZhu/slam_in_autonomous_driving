@@ -25,13 +25,13 @@ class StaticIMUInit {
    public:
     struct Options {
         Options() {}
-        double init_time_seconds_ = 10.0;     // 静止时间
+        double init_time_seconds_ = 3.0;     // 静止时间
         int init_imu_queue_max_size_ = 2000;  // 初始化IMU队列最大长度
         int static_odom_pulse_ = 5;           // 静止时轮速计输出噪声
         double max_static_gyro_var = 0.5;     // 静态下陀螺测量方差
         double max_static_acce_var = 0.05;    // 静态下加计测量方差
         double gravity_norm_ = 9.81;          // 重力大小
-        bool use_speed_for_static_checking_ = true;  // 是否使用odom来判断车辆静止（部分数据集没有odom选项）
+        bool use_speed_for_static_checking_ = false;  // 是否使用odom来判断车辆静止（部分数据集没有odom选项）
     };
 
     /// 构造函数

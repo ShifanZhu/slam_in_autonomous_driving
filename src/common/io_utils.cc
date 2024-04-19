@@ -46,6 +46,10 @@ void TxtIO::Go() {
             bool heading_valid;
             ss >> time >> lat >> lon >> alt >> heading >> heading_valid;
             gnss_proc_(GNSS(time, 4, Vec3d(lat, lon, alt), heading, heading_valid));
+        } else if (data_type == "MOCAP" && mocap_proc_) {
+            double time, x, y, z, qx, qy, qz, qw;
+            ss >> time >> x >> y >> z >> qx >> qy >> qz >> qw;
+            mocap_proc_(MoCap(time, Vec3d(x, y, z), Quatd(qw, qx, qy, qz)));
         }
     }
 
