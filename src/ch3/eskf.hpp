@@ -63,8 +63,8 @@ class ESKF {
         double gnss_ang_noise_ = 1.0 * math::kDEG2RAD;  // GNSS旋转噪声
 
         /// 其他配置
-        bool update_bias_gyro_ = true;  // 是否更新陀螺bias
-        bool update_bias_acce_ = true;  // 是否更新加计bias
+        bool update_bias_gyro_ = false;  // 是否更新陀螺bias
+        bool update_bias_acce_ = false;  // 是否更新加计bias
     };
 
     /**
@@ -251,7 +251,7 @@ bool ESKF<S>::Predict(const IMU& imu) {
     // 其余状态维度不变
 
     // error state 递推
-    // 计算运动过程雅可比矩阵 F，见(3.47)
+    // 计算运动过程雅可比矩阵 F，见(3.42 or 3.47)
     // F实际上是稀疏矩阵，也可以不用矩阵形式进行相乘而是写成散装形式(faster)，这里为了教学方便，使用矩阵形式
     Mat18T F = Mat18T::Identity();                                                 // 主对角线
     F.template block<3, 3>(0, 3) = Mat3T::Identity() * dt;                         // p 对 v
@@ -262,7 +262,8 @@ bool ESKF<S>::Predict(const IMU& imu) {
     F.template block<3, 3>(6, 9) = -Mat3T::Identity() * dt;                        // theta 对 bg
 
     // mean and cov prediction
-    dx_ = F * dx_;  // 这行其实没必要算，dx_在重置之后应该为零，因此这步可以跳过，但F需要参与Cov部分计算，所以保留
+    dx_ = F * dx_;  // 这行其实没必要算，dx_在重置之后应该为零，因此这步可以跳过或注释掉
+    // F需要参与cov部分计算，所以保留
     cov_ = F * cov_.eval() * F.transpose() + Q_; // P_pred: Predicted Covariance (3.48b)
     current_time_ = imu.timestamp_;
     return true;
@@ -365,7 +366,7 @@ bool ESKF<S>::ObserveSE3(const SE3& pose, double trans_noise, double ang_noise) 
     dx_ = K * innov; // 3.51b
     cov_ = (Mat18T::Identity() - K * H) * cov_;  // Corrected covariance (3.51d)
 
-    UpdateAndReset(); // Apply 3.51c
+    this->UpdateAndReset(); // Apply 3.51c
     return true;
 }
 

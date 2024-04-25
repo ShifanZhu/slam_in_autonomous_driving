@@ -82,7 +82,7 @@ void GinsPreInteg::AddGnss(const GNSS& gnss) {
     current_time_ = gnss.unix_time_;
     *this_frame_ = pre_integ_->Predict(*last_frame_, options_.gravity_);
 
-    Optimize(); // Only optimize when we observe GNSS
+    this->Optimize(); // Only optimize when we observe GNSS
 
     last_frame_ = this_frame_;
     last_gnss_ = this_gnss_;
@@ -141,6 +141,7 @@ void GinsPreInteg::Optimize() {
     v1_vel->setEstimate(this_frame_->v_);
     optimizer.addVertex(v1_vel);
 
+    // Vertex for bias random walk
     auto v1_bg = new VertexGyroBias();
     v1_bg->setId(6);
     v1_bg->setEstimate(this_frame_->bg_);

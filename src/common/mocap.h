@@ -20,7 +20,11 @@ struct MoCap {
     Quatd orientation_ = Quatd(1.0, 0.0, 0.0, 0.0);
 
     SO3 GetSO3() const { return SO3(orientation_); }
-    SE3 GetSE3() const { return SE3(orientation_, position_); }
+    SE3 GetSE3() const { return SE3(GetSO3(), position_); }
+    void SetSE3(const SE3& se3) {
+        position_ = se3.translation();
+        orientation_ = se3.so3().unit_quaternion();
+    }
     // so3 Getso3() const { return SO3().log(); }
     // se3 Getse3() const { return SE3().log(); }
 };

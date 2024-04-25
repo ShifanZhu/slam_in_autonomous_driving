@@ -45,11 +45,17 @@ void TxtIO::Go() {
             double time, lat, lon, alt, heading;
             bool heading_valid;
             ss >> time >> lat >> lon >> alt >> heading >> heading_valid;
-            gnss_proc_(GNSS(time, 4, Vec3d(lat, lon, alt), heading, heading_valid));
-        } else if (data_type == "MOCAP" && mocap_proc_) {
+            if (curr_mocap_time == 0.0 || time > curr_mocap_time + mocap_interval_) {
+                curr_mocap_time = time;
+                gnss_proc_(GNSS(time, 4, Vec3d(lat, lon, alt), heading, heading_valid));
+            }
+        } else if (data_type == "MoCap" && mocap_proc_) {
             double time, x, y, z, qx, qy, qz, qw;
             ss >> time >> x >> y >> z >> qx >> qy >> qz >> qw;
-            mocap_proc_(MoCap(time, Vec3d(x, y, z), Quatd(qw, qx, qy, qz)));
+            if (curr_mocap_time == 0.0 || time > curr_mocap_time + mocap_interval_) {
+                curr_mocap_time = time;
+                mocap_proc_(MoCap(time, Vec3d(x, y, z), Quatd(qw, qx, qy, qz)));
+            }
         }
     }
 

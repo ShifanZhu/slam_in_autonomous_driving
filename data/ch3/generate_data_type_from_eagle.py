@@ -6,7 +6,7 @@ def read_pose_file(filename):
         for line in file:
             parts = line.strip().split()
             # Convert microseconds to seconds
-            time_in_seconds = int(parts[0]) / 1_000_000
+            time_in_seconds = float(parts[0]) / 1e6
             # Keep other parts unchanged
             data = ' '.join(parts[1:])
             # Add the label "MoCap" and yield with the timestamp in seconds

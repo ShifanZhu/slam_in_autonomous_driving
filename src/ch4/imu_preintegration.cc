@@ -22,8 +22,7 @@ void IMUPreintegration::Integrate(const IMU &imu, double dt) {
 
     // dR先不更新，因为运动方程的系数矩阵A, B阵还需要现在的dR
 
-    // 运动方程雅可比矩阵系数，A,B阵，见(4.29)
-    // 另外两项在后面
+    // 运动方程雅可比矩阵系数，A,B阵，见(4.29, 4.30)
     Eigen::Matrix<double, 9, 9> A;
     A.setIdentity();
     Eigen::Matrix<double, 9, 6> B;
@@ -33,7 +32,6 @@ void IMUPreintegration::Integrate(const IMU &imu, double dt) {
     double dt2 = dt * dt;
 
     // NOTE A, B左上角块与公式稍有不同 （4.30）
-    //? A书中左上角是 dR_，此处是单位阵；B书中左上角是J*dt，此处是0 why?
     A.block<3, 3>(3, 0) = -dR_.matrix() * dt * acc_hat;
     A.block<3, 3>(6, 0) = -0.5f * dR_.matrix() * acc_hat * dt2;
     A.block<3, 3>(6, 3) = dt * Mat3d::Identity();
@@ -57,7 +55,7 @@ void IMUPreintegration::Integrate(const IMU &imu, double dt) {
     B.block<3, 3>(0, 0) = rightJ * dt;
 
     // 更新噪声项
-    cov_ = A * cov_ * A.transpose() + B * noise_gyro_acce_ * B.transpose();
+    cov_ = A * cov_ * A.transpose() + B * noise_gyro_acce_ * B.transpose(); // 4.31
 
     // 更新dR_dbg
     dR_dbg_ = deltaR.matrix().transpose() * dR_dbg_ - rightJ * dt;  // (4.39a)

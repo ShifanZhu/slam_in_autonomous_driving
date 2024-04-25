@@ -5,11 +5,12 @@
 #include <glog/logging.h>
 #include <iomanip>
 
+#include "ch3/static_imu_init.h"
 #include "ch3/imu_integration.h"
 #include "common/io_utils.h"
 #include "tools/ui/pangolin_window.h"
 
-DEFINE_string(imu_txt_path, "./data/ch3/10.txt", "数据文件路径");
+DEFINE_string(imu_txt_path, "./data/ch3/mocap1.txt", "数据文件路径");
 DEFINE_bool(with_ui, true, "是否显示图形界面");
 
 /// 本程序演示如何对IMU进行直接积分
@@ -27,7 +28,7 @@ int main(int argc, char** argv) {
     sad::TxtIO io(FLAGS_imu_txt_path);
 
     // 该实验中，我们假设零偏已知
-    Vec3d gravity(0, 0, -9.8);  // 重力方向
+    Vec3d gravity(0, 0, -9.81);  // 重力方向
     Vec3d init_bg(00.000224886, -7.61038e-05, -0.000742259);
     Vec3d init_ba(-0.165205, 0.0926887, 0.0058049);
 
@@ -54,8 +55,23 @@ int main(int argc, char** argv) {
         fout << std::endl;
     };
 
+    sad::StaticIMUInit imu_init;  // 使用默认配置
+    bool imu_inited = false;
+
     std::ofstream fout("./data/ch3/state.txt");
-    io.SetIMUProcessFunc([&imu_integ, &save_result, &fout, &ui](const sad::IMU& imu) {
+    io.SetIMUProcessFunc([&imu_init, &imu_inited, &imu_integ, &save_result, &fout, &ui](const sad::IMU& imu) {
+        /// IMU 处理函数. Static initilization first
+        if (!imu_init.InitSuccess()) {
+            imu_init.AddIMU(imu);
+            return;
+        }
+
+        /// 需要IMU初始化
+        if (!imu_inited) {
+            imu_integ.SetBias(imu_init.GetInitBg(), imu_init.GetInitBa());
+            imu_inited = true;
+            return;
+        }
           imu_integ.AddIMU(imu);
           save_result(fout, imu.timestamp_, imu_integ.GetR(), imu_integ.GetV(), imu_integ.GetP());
           if (ui) {

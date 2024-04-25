@@ -40,6 +40,11 @@ class IMUIntegration {
     Vec3d GetV() const { return v_; }
     Vec3d GetP() const { return p_; }
 
+    void SetBias(const Vec3d& bg, const Vec3d& ba) {
+        bg_ = bg;
+        ba_ = ba;
+    }
+
    private:
     // 累计量
     SO3 R_;
