@@ -63,8 +63,8 @@ class ESKF {
         double gnss_ang_noise_ = 1.0 * math::kDEG2RAD;  // GNSS旋转噪声
 
         /// 其他配置
-        bool update_bias_gyro_ = false;  // 是否更新陀螺bias
-        bool update_bias_acce_ = false;  // 是否更新加计bias
+        bool update_bias_gyro_ = true;  // 是否更新陀螺bias
+        bool update_bias_acce_ = true;  // 是否更新加计bias
     };
 
     /**

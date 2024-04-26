@@ -74,7 +74,8 @@ Vec3d IMUPreintegration::GetDeltaPosition(const Vec3d &bg, const Vec3d &ba) {
     return dp_ + dP_dbg_ * (bg - bg_) + dP_dba_ * (ba - ba_);
 }
 
-NavStated IMUPreintegration::Predict(const sad::NavStated &start, const Vec3d &grav) const {
+// Get prediceted states
+NavStated IMUPreintegration::Predict(const sad::NavStated& start, const Vec3d& grav) const {
     SO3 Rj = start.R_ * dR_;
     Vec3d vj = start.R_ * dv_ + start.v_ + grav * dt_;
     Vec3d pj = start.R_ * dp_ + start.p_ + start.v_ * dt_ + 0.5f * grav * dt_ * dt_;

@@ -31,7 +31,7 @@ bool StaticIMUInit::AddIMU(const IMU& imu) {
     double init_time = imu.timestamp_ - init_start_time_;  // 初始化经过时间
     if (init_time > options_.init_time_seconds_) {
         // 尝试初始化逻辑
-        TryInit();
+        this->TryInit();
     }
 
     // 维持初始化队列长度
@@ -70,7 +70,7 @@ bool StaticIMUInit::TryInit() {
     math::ComputeMeanAndCovDiag(init_imu_deque_, mean_acce, cov_acce_, [this](const IMU& imu) { return imu.acce_; });
     LOG(INFO) << "mean acce with bias: " << mean_acce.transpose();
 
-    // 以acce均值为方向，取9.81长度为重力
+    // 以acce均值为方向，取9.81长度为重力 
     gravity_ = -mean_acce / mean_acce.norm() * options_.gravity_norm_; // Note there is a *minus* sign here
     //// LOG(INFO) << "gravity: " << gravity_.transpose();
     //// LOG(INFO) << "first imu acc orig: " << init_imu_deque_[0].acce_.transpose();

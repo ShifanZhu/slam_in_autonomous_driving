@@ -71,7 +71,7 @@ class TxtIO {
     OdomProcessFuncType odom_proc_;
     GNSSProcessFuncType gnss_proc_;
     MoCapProcessFuncType mocap_proc_;
-    double mocap_interval_ = 0.009;
+    double mocap_interval_ = 0.09;
     double curr_mocap_time = 0.0;
 };
 

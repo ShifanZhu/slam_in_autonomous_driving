@@ -17,3 +17,9 @@ target_link_libraries(run_gins_pre_integ
         ${PROJECT_NAME}.ch4
         ${g2o_libs}
         )
+add_executable(run_mocap_pre_integ run_mocap_pre_integ.cc)
+target_link_libraries(run_mocap_pre_integ
+        ${PROJECT_NAME}.ch3
+        ${PROJECT_NAME}.ch4
+        ${g2o_libs}
+        )

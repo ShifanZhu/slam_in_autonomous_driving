@@ -1,5 +1,5 @@
 //
-// Created by xiang on 2022/1/21.
+// Created by Shifan on 2024/04/25.
 //
 
 #include "ch3/static_imu_init.h"
@@ -16,10 +16,9 @@
 /**
  * 运行由预积分构成的GINS系统
  */
-DEFINE_string(txt_path, "./data/ch3/10.txt", "数据文件路径");
-DEFINE_double(antenna_angle, 12.06, "RTK天线安装偏角（角度）");
-DEFINE_double(antenna_pox_x, -0.17, "RTK天线安装偏移X");
-DEFINE_double(antenna_pox_y, -0.20, "RTK天线安装偏移Y");
+// DEFINE_string(txt_path, "./data/ch3/mocap1.txt", "数据文件路径");
+DEFINE_string(txt_path, "./data/ch3/fasterlio_imu.txt", "数据文件路径");
+// DEFINE_string(txt_path, "./data/ch3/eats_in_imu_imu.txt", "数据文件路径");
 DEFINE_bool(with_ui, true, "是否显示图形界面");
 DEFINE_bool(debug, false, "是否打印调试信息");
 
@@ -37,7 +36,6 @@ int main(int argc, char** argv) {
     sad::StaticIMUInit imu_init;  // 使用默认配置
 
     sad::TxtIO io(fLS::FLAGS_txt_path);
-    Vec2d antenna_pos(fLD::FLAGS_antenna_pox_x, fLD::FLAGS_antenna_pox_y);
 
     auto save_vec3 = [](std::ofstream& fout, const Vec3d& v) { fout << v[0] << " " << v[1] << " " << v[2] << " "; };
     auto save_quat = [](std::ofstream& fout, const Quatd& q) {
@@ -54,14 +52,14 @@ int main(int argc, char** argv) {
         fout << std::endl;
     };
 
-    std::ofstream fout("./data/ch4/gins_preintg.txt");
-    bool imu_inited = false, gnss_inited = false;
+    std::ofstream fout("./data/ch4/mocap_preintg.txt");
+    bool imu_inited = false, mocap_inited = false;
 
     sad::GinsPreInteg::Options gins_options;
     gins_options.verbose_ = FLAGS_debug;
     sad::GinsPreInteg gins(gins_options);
 
-    bool first_gnss_set = false;
+    bool first_mocap_set = false;
     Vec3d origin = Vec3d::Zero();
 
     std::shared_ptr<sad::ui::PangolinWindow> ui = nullptr;
@@ -84,22 +82,18 @@ int main(int argc, char** argv) {
               sad::GinsPreInteg::Options options;
               options.preinteg_options_.init_bg_ = imu_init.GetInitBg();
               options.preinteg_options_.init_ba_ = imu_init.GetInitBa();
-              LOG(INFO) << "options.gravity_ = " << options.gravity_.transpose();
-              LOG(INFO) << "imu_init.GetGravity() = " << imu_init.GetGravity().transpose();
               options.gravity_ = imu_init.GetGravity();
-              LOG(INFO) << "new options.gravity_ = " << options.gravity_.transpose();
               gins.SetOptions(options);
-              LOG(INFO) << "new options.gravity_ = " << options.gravity_.transpose();
               imu_inited = true;
               return;
           }
 
-          if (!gnss_inited) {
+          if (!mocap_inited) {
               /// 等待有效的RTK数据
               return;
           }
 
-          /// Only Integrate here, when GNSS 也接收到之后，再开始进行预测
+          /// Only Integrate here, when MoCap 也接收到之后，再开始进行预测
           gins.AddImu(imu);
 
           auto state = gins.GetState();
@@ -109,26 +103,45 @@ int main(int argc, char** argv) {
               usleep(5e2);
           }
       })
-        .SetGNSSProcessFunc([&](const sad::GNSS& gnss) {
-            /// GNSS 处理函数
+        .SetMoCapProcessFunc([&](const sad::MoCap& mocap) {
+            /// MoCap 处理函数
             // IMU should be inited first
             if (!imu_inited) {
                 return;
             }
 
-            sad::GNSS gnss_convert = gnss;
-            if (!sad::ConvertGps2UTM(gnss_convert, antenna_pos, FLAGS_antenna_angle) || !gnss_convert.heading_valid_) {
-                return;
-            }
+            sad::MoCap mocap_convert = mocap;
+            // if (!sad::ConvertGps2UTM(gnss_convert, antenna_pos, FLAGS_antenna_angle) || !gnss_convert.heading_valid_) {
+            //     return;
+            // }
+
+            // Eigen::Matrix<double, 4, 4> T_marker_imu_matrix;
+
+            // T_marker_imu_matrix << 0.00676736863383343, 0.999787658356272, 0.0194638362163181, -0.00683758,
+            //     -0.0109922982027149, 0.0195374824414247, -0.999748696503313, -0.0195426,
+            //     -0.999916682580102, 0.00655171567857404, 0.0111221814259042, -0.00116914,
+            //     0, 0, 0, 1;
+            // SE3 mocap_pose(mocap.GetSE3());
+            // static SE3 first_mocap_pose = mocap_pose;
+            // SE3 T_marker_imu(T_marker_imu_matrix);
+            // SE3 T_mocap_imu(T_marker_imu.inverse() * first_mocap_pose.inverse() * mocap_pose * T_marker_imu);
+            // // mocap_convert.SetSE3(T_mocap_imu);
+
+            // Eigen::Matrix<double, 4, 4> T_adjust = Eigen::Matrix<double, 4, 4>::Identity();
+            // double angleZ = -8 * M_PI / 2;
+            // Eigen::AngleAxisd yawAngle(angleZ, Eigen::Vector3d::UnitY());
+            // T_adjust.block<3, 3>(0, 0) = yawAngle.toRotationMatrix();
+            // mocap_convert.SetSE3(SE3(T_adjust) * mocap.GetSE3());
+
+
 
             /// 去掉原点
-            if (!first_gnss_set) {
-                origin = gnss_convert.utm_pose_.translation();
-                first_gnss_set = true;
+            if (!first_mocap_set) {
+                origin = mocap_convert.position_;
+                first_mocap_set = true;
             }
-            gnss_convert.utm_pose_.translation() -= origin;
-
-            gins.AddGnss(gnss_convert);
+            mocap_convert.position_ -= origin;
+            gins.AddMoCap(mocap_convert);
 
             auto state = gins.GetState();
             save_result(fout, state);
@@ -136,15 +149,15 @@ int main(int argc, char** argv) {
                 ui->UpdateNavState(state);
                 usleep(1e3);
             }
-            gnss_inited = true;
+            mocap_inited = true;
         })
-        .SetOdomProcessFunc([&](const sad::Odom& odom) {
-            imu_init.AddOdom(odom);
+        // .SetOdomProcessFunc([&](const sad::Odom& odom) {
+        //     imu_init.AddOdom(odom);
 
-            if (imu_inited && gnss_inited) {
-                gins.AddOdom(odom);
-            }
-        })
+        //     if (imu_inited && mocap_inited) {
+        //         gins.AddOdom(odom);
+        //     }
+        // })
         .Go();
 
     while (ui && !ui->ShouldQuit()) {

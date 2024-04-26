@@ -83,6 +83,7 @@ int main(int argc, char** argv) {
               // 噪声由静止初始化器估计
               options.gyro_var_ = sqrt(imu_init.GetCovGyro()[0]);
               options.acce_var_ = sqrt(imu_init.GetCovAcce()[0]);
+              LOG(INFO) << "imu_init.GetGravity() " << imu_init.GetGravity().transpose();
               eskf.SetInitialConditions(options, imu_init.GetInitBg(), imu_init.GetInitBa(), imu_init.GetGravity());
               imu_inited = true;
               return;

@@ -26,26 +26,29 @@ void GinsPreInteg::AddImu(const IMU& imu) {
 }
 
 void GinsPreInteg::SetOptions(sad::GinsPreInteg::Options options) {
-    double bg_rw2 = 1.0 / (options_.bias_gyro_var_ * options_.bias_gyro_var_);
+    options_.gravity_ = options.gravity_;
+    options_.preinteg_options_.init_bg_ = options.preinteg_options_.init_bg_;
+    options_.preinteg_options_.init_ba_ = options.preinteg_options_.init_ba_;
+    double bg_rw2 = 1.0 / (options.bias_gyro_var_ * options.bias_gyro_var_);
     options_.bg_rw_info_.diagonal() << bg_rw2, bg_rw2, bg_rw2;
-    double ba_rw2 = 1.0 / (options_.bias_acce_var_ * options_.bias_acce_var_);
+    double ba_rw2 = 1.0 / (options.bias_acce_var_ * options.bias_acce_var_);
     options_.ba_rw_info_.diagonal() << ba_rw2, ba_rw2, ba_rw2;
 
-    double gp2 = options_.gnss_pos_noise_ * options_.gnss_pos_noise_;
-    double gh2 = options_.gnss_height_noise_ * options_.gnss_height_noise_;
-    double ga2 = options_.gnss_ang_noise_ * options_.gnss_ang_noise_;
+    double gp2 = options.gnss_pos_noise_ * options.gnss_pos_noise_;
+    double gh2 = options.gnss_height_noise_ * options.gnss_height_noise_;
+    double ga2 = options.gnss_ang_noise_ * options.gnss_ang_noise_;
 
     options_.gnss_info_.diagonal() << 1.0 / ga2, 1.0 / ga2, 1.0 / ga2, 1.0 / gp2, 1.0 / gp2, 1.0 / gh2;
-    pre_integ_ = std::make_shared<IMUPreintegration>(options_.preinteg_options_);
+    pre_integ_ = std::make_shared<IMUPreintegration>(options.preinteg_options_);
 
-    double o2 = 1.0 / (options_.odom_var_ * options_.odom_var_);
+    double o2 = 1.0 / (options.odom_var_ * options.odom_var_);
     options_.odom_info_.diagonal() << o2, o2, o2;
 
     prior_info_.block<6, 6>(9, 9) = Mat6d ::Identity() * 1e6;
 
     if (this_frame_) {
-        this_frame_->bg_ = options_.preinteg_options_.init_bg_;
-        this_frame_->ba_ = options_.preinteg_options_.init_ba_;
+        this_frame_->bg_ = options.preinteg_options_.init_bg_;
+        this_frame_->ba_ = options.preinteg_options_.init_ba_;
     }
 }
 
@@ -76,16 +79,53 @@ void GinsPreInteg::AddGnss(const GNSS& gnss) {
         return;
     }
 
-    // 积分到GNSS时刻. Note this is integration from last_imu_'s time to gnss time
+    // 积分到GNSS时刻. Note this is the integration between last_imu_'s time(current_time_) to gnss time
     pre_integ_->Integrate(last_imu_, gnss.unix_time_ - current_time_);
 
     current_time_ = gnss.unix_time_;
-    *this_frame_ = pre_integ_->Predict(*last_frame_, options_.gravity_);
+    LOG(INFO) << "new options.gravity_ = " << options_.gravity_.transpose();
+    *this_frame_ = pre_integ_->Predict(*last_frame_, options_.gravity_); // Get prediceted states, stored in this_frame_
+    LOG(INFO) << "new options.gravity_ = " << options_.gravity_.transpose();
 
     this->Optimize(); // Only optimize when we observe GNSS
 
     last_frame_ = this_frame_;
     last_gnss_ = this_gnss_;
+}
+
+
+void GinsPreInteg::AddMoCap(const MoCap& mocap) {
+    this_frame_ = std::make_shared<NavStated>(current_time_);
+    this_mocap_ = mocap;
+
+    if (!first_gnss_received_) {
+        // 首个mocap信号，将初始pose设置为该mocap信号
+        this_frame_->timestamp_ = mocap.timestamp_;
+        this_frame_->p_ = mocap.position_;
+        this_frame_->R_ = mocap.GetSE3().so3();
+        this_frame_->v_.setZero();
+        this_frame_->bg_ = options_.preinteg_options_.init_bg_;
+        this_frame_->ba_ = options_.preinteg_options_.init_ba_;
+
+        pre_integ_ = std::make_shared<IMUPreintegration>(options_.preinteg_options_);
+
+        last_frame_ = this_frame_;
+        last_mocap_ = this_mocap_;
+        first_gnss_received_ = true;
+        current_time_ = mocap.timestamp_;
+        return;
+    }
+
+    // 积分到GNSS时刻. Note this is the integration between last_imu_'s time(current_time_) to gnss time
+    pre_integ_->Integrate(last_imu_, mocap.timestamp_ - current_time_);
+
+    current_time_ = mocap.timestamp_;
+    *this_frame_ = pre_integ_->Predict(*last_frame_, options_.gravity_); // Get prediceted states, stored in this_frame_
+
+    this->Optimize(); // Only optimize when we observe GNSS
+
+    last_frame_ = this_frame_;
+    last_mocap_ = this_mocap_;
 }
 
 void GinsPreInteg::AddOdom(const sad::Odom& odom) {
@@ -188,11 +228,13 @@ void GinsPreInteg::Optimize() {
     optimizer.addEdge(edge_prior);
 
     // GNSS边
-    auto edge_gnss0 = new EdgeGNSS(v0_pose, last_gnss_.utm_pose_);
+    // auto edge_gnss0 = new EdgeGNSS(v0_pose, last_gnss_.utm_pose_);
+    auto edge_gnss0 = new EdgeGNSS(v0_pose, last_mocap_.GetSE3());
     edge_gnss0->setInformation(options_.gnss_info_);
     optimizer.addEdge(edge_gnss0);
 
-    auto edge_gnss1 = new EdgeGNSS(v1_pose, this_gnss_.utm_pose_);
+    // auto edge_gnss1 = new EdgeGNSS(v1_pose, this_gnss_.utm_pose_);
+    auto edge_gnss1 = new EdgeGNSS(v1_pose, this_mocap_.GetSE3());
     edge_gnss1->setInformation(options_.gnss_info_);
     optimizer.addEdge(edge_gnss1);
 

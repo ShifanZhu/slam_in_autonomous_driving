@@ -10,6 +10,7 @@
 #include <memory>
 
 #include "common/eigen_types.h"
+#include "common/mocap.h"
 #include "common/gnss.h"
 #include "common/imu.h"
 #include "common/math_utils.h"
@@ -32,7 +33,7 @@ class GinsPreInteg {
     struct Options {
         Options() {}
 
-        Vec3d gravity_ = Vec3d(0, 0, -9.8);  // 重力方向
+        Vec3d gravity_ = Vec3d(0, 0, -9.81);  // 重力方向
 
         /// IMU相关噪声参数在preinteg内部配置
         IMUPreintegration::Options preinteg_options_;
@@ -74,6 +75,12 @@ class GinsPreInteg {
     void AddGnss(const GNSS& gnss);
 
     /**
+     * MoCap 处理函数
+     * @param mocap
+     */
+    void AddMoCap(const MoCap& mocap);
+
+    /**
      * 轮速计处理函数
      * @param odom
      */
@@ -105,6 +112,10 @@ class GinsPreInteg {
     /// 两帧GNSS观测
     GNSS last_gnss_;
     GNSS this_gnss_;
+
+    // 两帧MoCap观测
+    MoCap last_mocap_;
+    MoCap this_mocap_;
 
     IMU last_imu_;    // 上时刻IMU
     Odom last_odom_;  // 上时刻odom
