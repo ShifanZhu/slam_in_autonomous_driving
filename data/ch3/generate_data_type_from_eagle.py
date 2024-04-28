@@ -6,7 +6,7 @@ def read_pose_file(filename):
         for line in file:
             parts = line.strip().split()
             # Convert microseconds to seconds
-            time_in_seconds = float(parts[0]) / 1e6
+            time_in_seconds = float(parts[0])
             # Keep other parts unchanged
             data = ' '.join(parts[1:])
             # Add the label "MoCap" and yield with the timestamp in seconds
@@ -18,7 +18,7 @@ def read_imu_file(filename):
         for line in file:
             parts = line.strip().split()
             # Convert microseconds to seconds
-            time_in_seconds = int(parts[0]) / 1_000_000
+            time_in_seconds = float(parts[0])
             # Keep other parts unchanged
             data = ' '.join(parts[1:])
             # Add the label "IMU" and yield with the timestamp in seconds
@@ -39,8 +39,8 @@ def merge_data(pose_file, imu_file):
         yield heapq.heappop(merged_data)
 
 def main():
-    pose_file = 'gt_pose.txt'
-    imu_file = 'vectornav.txt'
+    pose_file = 'mh01_gt_data_sad.txt'
+    imu_file = 'mh01_imu_data_sad.txt'
     output_file = 'combined_data.txt'
 
     # Use merge_data function to get sorted data and write to an output file
