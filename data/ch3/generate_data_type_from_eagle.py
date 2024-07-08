@@ -39,9 +39,9 @@ def merge_data(pose_file, imu_file):
         yield heapq.heappop(merged_data)
 
 def main():
-    pose_file = 'mh01_gt_data_sad.txt'
-    imu_file = 'mh01_imu_data_sad.txt'
-    output_file = 'combined_data.txt'
+    pose_file = 'eagle/outdoor/sidewalk1_day_trot/Faster-LIO.txt'
+    imu_file = 'eagle/outdoor/sidewalk1_day_trot/vectornav_us.txt'
+    output_file = 'eagle/outdoor/sidewalk1_day_trot/lidar_imu.txt'
 
     # Use merge_data function to get sorted data and write to an output file
     with open(output_file, 'w') as file:

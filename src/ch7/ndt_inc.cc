@@ -218,6 +218,7 @@ bool IncNdt3d::AlignNdt(SE3& init_pose) {
 }
 
 void IncNdt3d::ComputeResidualAndJacobians(const SE3& input_pose, Mat18d& HTVH, Vec18d& HTVr) {
+    // seq four
     assert(grids_.empty() == false);
     SE3 pose = input_pose;
 
@@ -267,8 +268,8 @@ void IncNdt3d::ComputeResidualAndJacobians(const SE3& input_pose, Mat18d& HTVH, 
                 // build residual
                 Eigen::Matrix<double, 3, 18> J;
                 J.setZero();
-                J.block<3, 3>(0, 0) = Mat3d::Identity();                   // 对p
-                J.block<3, 3>(0, 6) = -pose.so3().matrix() * SO3::hat(q);  // 对R
+                J.block<3, 3>(0, 0) = Mat3d::Identity();                   // residual 对p 8.15
+                J.block<3, 3>(0, 6) = -pose.so3().matrix() * SO3::hat(q);  // residual 对R 8.15
 
                 jacobians[real_idx] = J;
                 errors[real_idx] = e;
@@ -300,7 +301,7 @@ void IncNdt3d::ComputeResidualAndJacobians(const SE3& input_pose, Mat18d& HTVH, 
         HTVH += jacobians[idx].transpose() * infos[idx] * jacobians[idx] * info_ratio;
         HTVr += -jacobians[idx].transpose() * infos[idx] * errors[idx] * info_ratio;
     }
-
+    // seq five
     LOG(INFO) << "effective: " << effective_num;
 }
 

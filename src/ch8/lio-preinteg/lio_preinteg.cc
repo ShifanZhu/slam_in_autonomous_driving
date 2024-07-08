@@ -54,6 +54,7 @@ bool LioPreinteg::Init(const std::string &config_yaml) {
 
 void LioPreinteg::ProcessMeasurements(const MeasureGroup &meas) {
     LOG(INFO) << "call meas, imu: " << meas.imu_.size() << ", lidar pts: " << meas.lidar_->size();
+    // step six
     measures_ = meas;
 
     if (imu_need_init_) {
@@ -63,13 +64,13 @@ void LioPreinteg::ProcessMeasurements(const MeasureGroup &meas) {
     }
 
     // 利用IMU数据进行状态预测
-    Predict();
+    this->Predict();
 
     // 对点云去畸变
     Undistort();
 
     // 配准
-    Align();
+    this->Align();
 }
 
 bool LioPreinteg::LoadFromYAML(const std::string &yaml_file) {
@@ -120,7 +121,7 @@ void LioPreinteg::Align() {
 
     ndt_.AlignNdt(ndt_pose_);
 
-    Optimize();
+    this->Optimize();
 
     // 若运动了一定范围，则把点云放入地图中
     SE3 current_pose = current_nav_state_.GetSE3();
@@ -211,7 +212,11 @@ void LioPreinteg::Predict() {
     }
 }
 
-void LioPreinteg::PCLCallBack(const sensor_msgs::PointCloud2::ConstPtr &msg) { sync_->ProcessCloud(msg); }
+void LioPreinteg::PCLCallBack(const sensor_msgs::PointCloud2::ConstPtr& msg) {
+    // step two
+    sync_->ProcessCloud(msg);
+    // step nine
+}
 
 void LioPreinteg::LivoxPCLCallBack(const livox_ros_driver::CustomMsg::ConstPtr &msg) { sync_->ProcessCloud(msg); }
 
@@ -371,6 +376,8 @@ void LioPreinteg::Optimize() {
     Eigen::Matrix<double, 30, 30> H;
     H.setZero();
 
+    // After optimization, we marginalize previous state. g2o does not support marginalization directly.
+    // We need to concatenate hessian matrices from all edges to build full hession matrix.
     H.block<24, 24>(0, 0) += edge_inertial->GetHessian();
 
     Eigen::Matrix<double, 6, 6> Hgr = edge_gyro_rw->GetHessian();
@@ -388,7 +395,8 @@ void LioPreinteg::Optimize() {
     H.block<15, 15>(0, 0) += edge_prior->GetHessian();
     H.block<6, 6>(15, 15) += edge_ndt->GetHessian();
 
-    H = math::Marginalize(H, 0, 14);
+    H = math::Marginalize(H, 0, 14); // marginalize v0_pose, v0_vel, v0_bg, v0_ba
+    LOG(INFO)<<"Hessian: \n"<<H;
     prior_info_ = H.block<15, 15>(15, 15);
 
     if (options_.verbose_) {

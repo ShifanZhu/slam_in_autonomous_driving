@@ -6,6 +6,14 @@ target_link_libraries(run_imu_integration
         glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3
         )
 
+add_executable(run_imu_integration_sim
+        run_imu_integration_sim.cc
+        )
+
+target_link_libraries(run_imu_integration_sim
+        glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3
+        )
+
 add_executable(run_eskf_gins run_eskf_gins.cc)
 target_link_libraries(run_eskf_gins
         glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3

@@ -85,6 +85,9 @@
         "stack": "cpp",
         "core": "cpp",
         "numericaldiff": "cpp",
-        "specialfunctions": "cpp"
+        "specialfunctions": "cpp",
+        "locale": "cpp",
+        "any": "cpp",
+        "variant": "cpp"
     }
 }

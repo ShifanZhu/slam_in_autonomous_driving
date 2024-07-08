@@ -42,6 +42,7 @@ bool LioIEKF::Init(const std::string &config_yaml) {
 
 void LioIEKF::ProcessMeasurements(const MeasureGroup &meas) {
     LOG(INFO) << "call meas, imu: " << meas.imu_.size() << ", lidar pts: " << meas.lidar_->size();
+    // step six
     measures_ = meas;
 
     if (imu_need_init_) {
@@ -51,13 +52,13 @@ void LioIEKF::ProcessMeasurements(const MeasureGroup &meas) {
     }
 
     // 利用IMU数据进行状态预测
-    Predict();
+    this->Predict(); // Same as eskf
 
     // 对点云去畸变
     Undistort();
 
     // 配准
-    Align();
+    this->Align();
 }
 
 bool LioIEKF::LoadFromYAML(const std::string &yaml_file) {
@@ -103,7 +104,10 @@ void LioIEKF::Align() {
     LOG(INFO) << "=== frame " << frame_num_;
 
     ndt_.SetSource(current_scan_filter);
-    ieskf_.UpdateUsingCustomObserve([this](const SE3 &input_pose, Mat18d &HTVH, Vec18d &HTVr) {
+    // IESKF updates the state of the Kalman filter using a custom observation function provided as an argument
+    // The custom observation function is a lambda function that takes the current pose and returns the residual and Jacobians
+    // seq one
+    ieskf_.UpdateUsingCustomObserve([this](const SE3& input_pose, Mat18d& HTVH, Vec18d& HTVr) {
         ndt_.ComputeResidualAndJacobians(input_pose, HTVH, HTVr);
     });
 
@@ -188,12 +192,16 @@ void LioIEKF::Predict() {
 
     /// 对IMU状态进行预测
     for (auto &imu : measures_.imu_) {
-        ieskf_.Predict(*imu);
+        ieskf_.Predict(*imu); // same as eskf
         imu_states_.emplace_back(ieskf_.GetNominalState());
     }
 }
 
-void LioIEKF::PCLCallBack(const sensor_msgs::PointCloud2::ConstPtr &msg) { sync_->ProcessCloud(msg); }
+void LioIEKF::PCLCallBack(const sensor_msgs::PointCloud2::ConstPtr& msg) {
+    // step two
+    sync_->ProcessCloud(msg);
+    // step nine
+}
 
 void LioIEKF::LivoxPCLCallBack(const livox_ros_driver::CustomMsg::ConstPtr &msg) { sync_->ProcessCloud(msg); }
 

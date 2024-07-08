@@ -6,6 +6,7 @@
 namespace sad {
 
 bool MessageSync::Sync() {
+    // step four
     if (lidar_buffer_.empty() || imu_buffer_.empty()) {
         return false;
     }
@@ -39,9 +40,12 @@ bool MessageSync::Sync() {
     time_buffer_.pop_front();
     lidar_pushed_ = false;
 
+    // step five
+    // Data is ready, call LioIEKF::ProcessMeasurements function to process
     if (callback_) {
         callback_(measures_);
     }
+    // step seven
 
     return true;
 }

@@ -34,7 +34,17 @@ class IMUIntegration {
     }
 
     /// 组成NavState
-    NavStated GetNavState() const { return NavStated(timestamp_, R_, p_, v_, bg_, ba_); }
+    NavStated GetNavState() const {
+        Eigen::Matrix3d R;   // 把body坐标系朝向旋转一下,得到相机坐标系，好让它看到landmark,  相机坐标系的轴在body坐标系中的表示
+        // 相机朝着轨迹里面看， 特征点在轨迹外部， 这里我们采用这个
+        R << 0, 0, -1,
+            -1, 0, 0,
+            0, 1, 0;
+        SO3 R_bc(R);
+        Eigen::Vector3d t_bc = Eigen::Vector3d(0.05, 0.04, 0.03);
+
+        return NavStated(timestamp_, R_ * R_bc, p_ + R_*t_bc, v_, bg_, ba_);
+    }
 
     SO3 GetR() const { return R_; }
     Vec3d GetV() const { return v_; }

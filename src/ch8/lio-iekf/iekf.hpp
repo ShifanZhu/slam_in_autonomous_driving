@@ -216,8 +216,8 @@ bool IESKF<S>::Predict(const IMU& imu) {
 }
 template <typename S>
 bool IESKF<S>::UpdateUsingCustomObserve(IESKF::CustomObsFunc obs) {
+    // seq two
     // H阵由用户给定
-
     SO3 start_R = R_;
     Eigen::Matrix<S, 18, 1> HTVr;
     Eigen::Matrix<S, 18, 18> HTVH;
@@ -226,9 +226,10 @@ bool IESKF<S>::UpdateUsingCustomObserve(IESKF::CustomObsFunc obs) {
 
     for (int iter = 0; iter < options_.num_iterations_; ++iter) {
         // 调用obs function
+        // seq three
         obs(GetNominalSE3(), HTVH, HTVr);
 
-        // 切空间的投影变换。J描述了P_pred到P的变换
+        // 切空间的投影变换。J描述了P_pred到P的变换. from error state to actual state
         Mat18T J = Mat18T::Identity();
         J.template block<3, 3>(6, 6) = Mat3T::Identity() - 0.5 * SO3::hat((R_.inverse() * start_R).log()); // 8.5
         Pk = J * cov_ * J.transpose(); // 8.6
@@ -239,17 +240,18 @@ bool IESKF<S>::UpdateUsingCustomObserve(IESKF::CustomObsFunc obs) {
         // LOG(INFO) << "iter " << iter << " dx = " << dx_.transpose() << ", dxn: " << dx_.norm();
 
         // dx合入名义变量
-        Update();
+        this->Update();
 
         if (dx_.norm() < options_.quit_eps_) {
             break;
         }
     }
+    // seq six
 
-    // update P
-    cov_ = (Mat18T::Identity() - Qk * HTVH) * Pk;
+    // Trick: after all iterations, now we can update P
+    cov_ = (Mat18T::Identity() - Qk * HTVH) * Pk; // 8.21
 
-    // project P
+    // Project P to new state
     Mat18T J = Mat18T::Identity();
     Vec3d dtheta = (R_.inverse() * start_R).log();
     J.template block<3, 3>(6, 6) = Mat3T::Identity() - 0.5 * SO3::hat(dtheta);

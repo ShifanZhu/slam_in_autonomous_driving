@@ -595,11 +595,11 @@ inline Eigen::MatrixXd Marginalize(const Eigen::MatrixXd& H, const int& start, c
     // ca | cb | c        ca* | 0 | c*
 
     // Size of block before block to marginalize
-    const int a = start;
+    const int a = start; // 0
     // Size of block to marginalize
-    const int b = end - start + 1;
+    const int b = end - start + 1; // 15
     // Size of block after block to marginalize
-    const int c = H.cols() - (end + 1);
+    const int c = H.cols() - (end + 1); // 15
 
     // Reorder as follows:
     // a  | ab | ac       a  | ac | ab

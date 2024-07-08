@@ -102,7 +102,8 @@ class RosbagIO {
     void Go();
 
     /// 通用处理函数
-    RosbagIO &AddHandle(const std::string &topic_name, MessageProcessFunction func) {
+    // This function is only called once
+    RosbagIO& AddHandle(const std::string& topic_name, MessageProcessFunction func) {
         process_func_.emplace(topic_name, func);
         return *this;
     }
@@ -130,7 +131,8 @@ class RosbagIO {
     }
 
     /// 根据数据集类型自动确定topic名称
-    RosbagIO &AddAutoPointCloudHandle(PointCloud2Handle f) {
+    // This function is only called once
+    RosbagIO& AddAutoPointCloudHandle(PointCloud2Handle f) {
         if (dataset_type_ == DatasetType::WXB_3D) {
             return AddHandle(wxb_lidar_topic, [f, this](const rosbag::MessageInstance &m) -> bool {
                 auto msg = m.instantiate<PacketsMsg>();

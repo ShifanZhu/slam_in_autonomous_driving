@@ -29,7 +29,7 @@ bool Frontend::Init() {
     system("rm -rf ./data/ch9/keyframes.txt");
 
     LioIEKF::Options options;
-    options.with_ui_ = false;  // 跑建图不需要打开前端UI
+    options.with_ui_ = true;  // 跑建图不需要打开前端UI
     lio_ = std::make_shared<LioIEKF>(options);
     lio_->Init(lio_yaml_);
     return true;
@@ -45,7 +45,7 @@ void Frontend::Run() {
             return true;
         })
         .Go();
-    rosbag_io.CleanProcessFunc();  // 不再需要处理RTK
+    rosbag_io.CleanProcessFunc();  // 已经读取了全部的gnss,不再需要处理RTK
 
     RemoveMapOrigin();
 

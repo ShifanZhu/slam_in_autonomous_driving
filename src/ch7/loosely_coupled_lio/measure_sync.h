@@ -52,7 +52,8 @@ class MessageSync {
      * 处理sensor_msgs::PointCloud2点云
      * @param msg
      */
-    void ProcessCloud(const sensor_msgs::PointCloud2::ConstPtr &msg) {
+    void ProcessCloud(const sensor_msgs::PointCloud2::ConstPtr& msg) {
+        // step three
         if (msg->header.stamp.toSec() < last_timestamp_lidar_) {
             LOG(ERROR) << "lidar loop back, clear buffer";
             lidar_buffer_.clear();
@@ -65,6 +66,7 @@ class MessageSync {
         last_timestamp_lidar_ = msg->header.stamp.toSec();
 
         Sync();
+        // step eight
     }
 
     /// 处理Livox点云

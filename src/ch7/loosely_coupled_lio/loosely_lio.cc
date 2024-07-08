@@ -156,8 +156,8 @@ void LooselyLIO::Align() {
     }
 
     /// 从EKF中获取预测pose，放入LO，获取LO位姿，最后合入EKF
-    SE3 pose_predict = eskf_.GetNominalSE3();
-    inc_ndt_lo_->AddCloud(current_scan_filter, pose_predict, true);
+    SE3 pose_predict = eskf_.GetNominalSE3(); // get predicted pose
+    inc_ndt_lo_->AddCloud(current_scan_filter, pose_predict, true); // get matched pose from ndt
     pose_of_lo_ = pose_predict;
     eskf_.ObserveSE3(pose_of_lo_, 1e-2, 1e-2); // Same as ch3, here we get pose from LO, not GNSS
 
