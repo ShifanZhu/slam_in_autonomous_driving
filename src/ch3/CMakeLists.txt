@@ -1,33 +1,43 @@
-add_executable(run_imu_integration
-        run_imu_integration.cc
-        )
+# add_executable(run_imu_integration
+#         run_imu_integration.cc
+#         )
 
-target_link_libraries(run_imu_integration
+# target_link_libraries(run_imu_integration
+#         glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3
+#         )
+
+# add_executable(run_imu_integration_sim
+#         run_imu_integration_sim.cc
+#         )
+
+# target_link_libraries(run_imu_integration_sim
+#         glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3
+#         )
+
+# add_executable(run_eskf_gins run_eskf_gins.cc)
+# target_link_libraries(run_eskf_gins
+#         glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3
+#         )
+
+add_executable(run_eskf_landmarks run_eskf_landmarks.cc)
+target_link_libraries(run_eskf_landmarks
         glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3
         )
 
-add_executable(run_imu_integration_sim
-        run_imu_integration_sim.cc
-        )
-
-target_link_libraries(run_imu_integration_sim
+add_executable(run_iekf_landmarks run_iekf_landmarks.cc)
+target_link_libraries(run_iekf_landmarks
         glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3
         )
 
-add_executable(run_eskf_gins run_eskf_gins.cc)
-target_link_libraries(run_eskf_gins
-        glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3
-        )
+# add_executable(run_eskf_mocap run_eskf_mocap.cc)
+# target_link_libraries(run_eskf_mocap
+#         glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3
+#         )
 
-add_executable(run_eskf_mocap run_eskf_mocap.cc)
-target_link_libraries(run_eskf_mocap
-        glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3
-        )
-
-add_executable(process_gnss process_gnss.cc)
-target_link_libraries(process_gnss
-        glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3
-        )
+# add_executable(process_gnss process_gnss.cc)
+# target_link_libraries(process_gnss
+#         glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3
+#         )
 
 add_library(${PROJECT_NAME}.ch3
         static_imu_init.cc

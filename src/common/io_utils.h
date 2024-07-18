@@ -21,6 +21,7 @@
 #include "common/math_utils.h"
 #include "common/message_def.h"
 #include "common/odom.h"
+#include "common/landmarks.h"
 #include "livox_ros_driver/CustomMsg.h"
 #include "tools/pointcloud_convert/velodyne_convertor.h"
 
@@ -40,7 +41,8 @@ class TxtIO {
     using IMUProcessFuncType = std::function<void(const IMU &)>;
     using OdomProcessFuncType = std::function<void(const Odom &)>;
     using GNSSProcessFuncType = std::function<void(const GNSS &)>;
-    using MoCapProcessFuncType = std::function<void(const MoCap &)>;
+    using MoCapProcessFuncType = std::function<void(const MoCap&)>;
+    using LandmarksProcessFuncType = std::function<void(const Landmarks&)>;
 
     TxtIO &SetIMUProcessFunc(IMUProcessFuncType imu_proc) {
         imu_proc_ = std::move(imu_proc);
@@ -62,6 +64,11 @@ class TxtIO {
         return *this;
     }
 
+    TxtIO& SetLandmarksProcessFunc(LandmarksProcessFuncType landmarks_proc) {
+        landmarks_proc_ = std::move(landmarks_proc);
+        return *this;
+    }
+
     // 遍历文件内容，调用回调函数
     void Go();
 
@@ -71,6 +78,7 @@ class TxtIO {
     OdomProcessFuncType odom_proc_;
     GNSSProcessFuncType gnss_proc_;
     MoCapProcessFuncType mocap_proc_;
+    LandmarksProcessFuncType landmarks_proc_;
     double mocap_interval_ = 0.09;
     double curr_mocap_time = 0.0;
 };

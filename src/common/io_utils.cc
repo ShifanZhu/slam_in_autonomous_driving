@@ -56,6 +56,19 @@ void TxtIO::Go() {
                 curr_mocap_time = time;
                 mocap_proc_(MoCap(time, Vec3d(x, y, z), Quatd(qw, qx, qy, qz)));
             }
+        } else if (data_type == "LANDMARK" && landmarks_proc_) {
+
+            // LOG(INFO) << "ss.size() = " << ss.str().size() << ", ss = " << ss.str().split(" ").size();
+            std::vector<Vec4d> landmark_vec;
+            double time;
+            ss >> time;
+            std::string data1, data2, data3, data4;
+            while (ss >> data1 >> data2 >> data3 >> data4) {
+                landmark_vec.push_back(Vec4d(std::stoi(data1), std::stod(data2), std::stod(data3), std::stod(data4)));
+            }
+
+            Landmarks landmarks(time, landmark_vec);
+            landmarks_proc_(landmarks);
         }
     }
 

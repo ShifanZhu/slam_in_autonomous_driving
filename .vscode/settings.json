@@ -88,6 +88,11 @@
         "specialfunctions": "cpp",
         "locale": "cpp",
         "any": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "__config": "cpp",
+        "__debug": "cpp",
+        "__functional_base": "cpp",
+        "__locale": "cpp",
+        "ios": "cpp"
     }
 }
