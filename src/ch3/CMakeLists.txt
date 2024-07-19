@@ -29,6 +29,11 @@ target_link_libraries(run_iekf_landmarks
         glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3
         )
 
+add_executable(run_ekf_landmarks run_ekf_landmarks.cc)
+target_link_libraries(run_ekf_landmarks
+        glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3
+        )
+
 # add_executable(run_eskf_mocap run_eskf_mocap.cc)
 # target_link_libraries(run_eskf_mocap
 #         glog gflags ${PROJECT_NAME}.common ${PROJECT_NAME}.ch3
