@@ -91,17 +91,6 @@ int main(int argc, char** argv) {
           auto state = eskf.GetNominalState();
           if (ui) {
               ui->UpdateNavState(state);
-
-            //   Eigen::Matrix3d R;   // 把body坐标系朝向旋转一下,得到相机坐标系，好让它看到landmark,  相机坐标系的轴在body坐标系中的表示
-            //   // 相机朝着轨迹里面看， 特征点在轨迹外部， 这里我们采用这个
-            //   R << 0, 0, -1,
-            //       -1, 0, 0,
-            //       0, 1, 0;
-            //   SO3 R_bc(R);
-            //   Eigen::Vector3d t_bc = Eigen::Vector3d(0.05, 0.04, 0.03);
-
-            //   sad::NavStated body_steate = sad::NavStated(state.timestamp_, state.R_ * R_bc, state.p_ + state.R_ * t_bc, state.v_, state.bg_, state.ba_);
-            //   ui->UpdateNavState(body_steate);
           }
 
           /// 记录数据以供绘图
@@ -113,31 +102,26 @@ int main(int argc, char** argv) {
         if (!imu_inited) {
             return;
         }
+        if (abs(landmarks.timestamp_ - 20) < 0.001) {
+            double roll = 0;  // phi
+            double pitch = 0; // theta
+            double yaw = 30;   // psi
+            Eigen::Matrix3d R_roll = Eigen::AngleAxisd(roll, Eigen::Vector3d::UnitX()).toRotationMatrix();
+            Eigen::Matrix3d R_pitch = Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()).toRotationMatrix();
+            Eigen::Matrix3d R_yaw = Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+            Eigen::Matrix3d Rwb = R_yaw * R_pitch * R_roll;
+            // get roll, pitch, yaw
+            Vec3d euler_before = eskf.GetOrientation().matrix().eulerAngles(2, 1, 0);
+            LOG(INFO) << "euler_before = " << euler_before.transpose() * 180 / M_PI;
+
+            SO3 R_biased = eskf.GetOrientation() * SO3(Rwb);
+            eskf.SetOrientation(R_biased);
+            Vec3d euler_after = eskf.GetOrientation().matrix().eulerAngles(2, 1, 0);
+            LOG(INFO) << "euler_after = " << euler_after.transpose() * 180 / M_PI;
+            // R_ = SO3::exp(VecT(1.5, -1.6, 1.9));
+        }
         /// Landmarks 处理函数
-        // LOG(INFO) << "time = " << landmarks.timestamp_;
-        // // print features
-        // for (int i = 0; i < landmarks.landmarks_.size(); i++) {
-        //     LOG(INFO) << "feature " << i << ": " << landmarks.timestamp_ << " " << landmarks.landmarks_[i].transpose();
-        // }
-
-        // Eigen::Matrix3d R_bc;   // 把body坐标系朝向旋转一下,得到相机坐标系，好让它看到landmark,  相机坐标系的轴在body坐标系中的表示
-        // // 相机朝着轨迹里面看， 特征点在轨迹外部， 这里我们采用这个
-        // R_bc << 0, 0, -1,
-        //     -1, 0, 0,
-        //     0, 1, 0;
-        // Eigen::Vector3d t_bc = Eigen::Vector3d(0.05, 0.04, 0.03);
-
-        // // return NavStated(timestamp_, R_ * R_bc, p_ + R_ * t_bc, v_, bg_, ba_);
-
-        // // convert landmarks to body frame
-        // sad::Landmarks landmarks_body;
-        // landmarks_body.timestamp_ = landmarks.timestamp_;
-        // for (int i = 0; i < landmarks.landmarks_.size(); i++) {
-        //     Vec3d landmark_c = R_bc* landmarks.landmarks_[i].tail<3>() + t_bc;
-        //     landmarks_body.landmarks_.push_back(Vec4d(landmarks.landmarks_[i][0], landmark_c[0], landmark_c[1], landmark_c[2])); // Rbc
-        // }
-
-        // eskf.ObserveLandmarks(landmarks);
+        eskf.ObserveLandmarks(landmarks);
     })
     .Go();
 

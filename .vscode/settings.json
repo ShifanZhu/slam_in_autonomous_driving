@@ -93,6 +93,7 @@
         "__debug": "cpp",
         "__functional_base": "cpp",
         "__locale": "cpp",
-        "ios": "cpp"
+        "ios": "cpp",
+        "__bit_reference": "cpp"
     }
 }

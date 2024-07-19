@@ -16,6 +16,7 @@
 
 #include <glog/logging.h>
 #include <iomanip>
+#include <fstream>
 
 namespace sad {
 
@@ -138,6 +139,8 @@ class ESKF {
 
     /// 获取重力
     Vec3d GetGravity() const { return g_; }
+    SO3 GetOrientation() const { return R_; }
+    void SetOrientation(SO3& R) { R_ = R; }
 
    private:
     void BuildNoise(const Options& options) {
@@ -233,6 +236,27 @@ class ESKF {
 using ESKFD = ESKF<double>;
 using ESKFF = ESKF<float>;
 
+
+void save_Pose_asTUM(std::string filename, SO3 orient, Vec3d tran, double t)
+{
+    std::ofstream save_points;
+    save_points.setf(std::ios::fixed, std::ios::floatfield);
+    save_points.open(filename.c_str(), std::ios::app);
+
+    Eigen::Quaterniond q(orient.matrix());
+
+    save_points.precision(9);
+    save_points << t << " ";
+    save_points.precision(10);
+    save_points << tran(0) << " "
+        << tran(1) << " "
+        << tran(2) << " "
+        << q.x() << " "
+        << q.y() << " "
+        << q.z() << " "
+        << q.w() << std::endl;
+}
+
 template <typename S>
 bool ESKF<S>::Predict(const IMU& imu) {
     assert(imu.timestamp_ >= current_time_);
@@ -249,8 +273,6 @@ bool ESKF<S>::Predict(const IMU& imu) {
     VecT new_p = p_ + v_ * dt + 0.5 * (R_ * (imu.acce_ - ba_)) * dt * dt + 0.5 * g_ * dt * dt; // 3.41a
     VecT new_v = v_ + R_ * (imu.acce_ - ba_) * dt + g_ * dt; // 3.41b
     SO3 new_R = R_ * SO3::exp((imu.gyro_ - bg_) * dt); // 3.41c Right multiply because IMU data is in local frame
-    // std::cout << "t: " << imu.timestamp_ << " p: " << new_p.transpose() << " v: " << new_v.transpose() << " R: " << new_R.unit_quaternion().coeffs().transpose() << std::endl;
-    std::cout << "t: " << imu.timestamp_ << " ba: " << ba_.transpose() << " bg: " << bg_.transpose() << " acc: " << imu.acce_.transpose() << " gyro: " << imu.gyro_.transpose() << std::endl;
 
     R_ = new_R;
     v_ = new_v;
@@ -395,7 +417,7 @@ bool ESKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
     Eigen::VectorXd observations = Eigen::VectorXd::Zero(3 * numLandmarks);
     Eigen::VectorXd measurements = Eigen::VectorXd::Zero(3 * numLandmarks);
 
-    Eigen::MatrixXd R = Eigen::MatrixXd::Identity(3 * numLandmarks, 3 * numLandmarks) * 0.1; // Example value, tune as necessary
+    Eigen::MatrixXd R = Eigen::MatrixXd::Identity(3 * numLandmarks, 3 * numLandmarks) * 0.1; // Observation noise, tune as necessary
 
 
     for (int i = 0; i < numLandmarks; ++i) {
@@ -456,6 +478,10 @@ bool ESKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
     cov_ = (Mat18T::Identity() - K * H) * cov_;  // Corrected covariance (3.51d)
 
     this->UpdateAndReset(); // Apply 3.51c
+
+
+    save_Pose_asTUM("log/pose_eskf.txt", R_, p_, landmarks.timestamp_);
+
 
     return true;
 }

@@ -16,6 +16,7 @@
 
 #include <glog/logging.h>
 #include <iomanip>
+#include <fstream>
 
 namespace sad {
 
@@ -141,6 +142,8 @@ class IEKF {
 
     /// 获取重力
     Vec3d GetGravity() const { return g_; }
+    SO3 GetOrientation() const { return R_; }
+    void SetOrientation(SO3& R) {R_ = R;}
 
    private:
     void BuildNoise(const Options& options) {
@@ -244,6 +247,202 @@ class IEKF {
 using IEKFD = IEKF<double>;
 using IEKFF = IEKF<float>;
 
+
+const Eigen::MatrixXd Xinv(Eigen::MatrixXd& X) {
+    // const Eigen::MatrixXd Xinv(Eigen::MatrixXd & X) const {
+    int dimX = 23;
+    Eigen::MatrixXd Xinv = Eigen::MatrixXd::Identity(dimX, dimX);
+    Eigen::Matrix3d RT = X.block<3, 3>(0, 0).transpose();
+    Xinv.block<3, 3>(0, 0) = RT;
+    for (int i = 3; i < dimX; ++i) {
+        Xinv.block<3, 1>(0, i) = -RT * X.block<3, 1>(0, i);
+    }
+    return Xinv;
+}
+
+Eigen::Matrix3d skewSymmetric(const Eigen::Vector3d& vec) {
+    Eigen::Matrix3d skew;
+    skew << 0, -vec(2), vec(1),
+        vec(2), 0, -vec(0),
+        -vec(1), vec(0), 0;
+    return skew;
+}
+
+long int factorial(int n) {
+    return (n == 1 || n == 0) ? 1 : factorial(n - 1) * n;
+}
+
+Eigen::Matrix3d Gamma_SO3(const Eigen::Vector3d& w, int m) {
+    // Computes mth integral of the exponential map: \Gamma_m = \sum_{n=0}^{\infty} \dfrac{1}{(n+m)!} (w^\wedge)^n
+    assert(m >= 0);
+    Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
+    double theta = w.norm();
+    if (theta < 1e-10) {
+        return (1.0 / factorial(m)) * I; // TODO: There is a better small value approximation for exp() given in Trawny p.19
+    }
+    Eigen::Matrix3d A = skewSymmetric(w);
+    double theta2 = theta * theta;
+
+    // Closed form solution for the first 3 cases
+    switch (m) {
+    case 0: // Exp map of SO(3) // Taylor expansion: Directly computes the rotation matrix for a given angular velocity vector.
+        return I + (sin(theta) / theta) * A + ((1 - cos(theta)) / theta2) * A * A;
+
+    case 1: // Left Jacobian of SO(3) // Mapping small angular changes in the Lie algebra to changes in the Lie group
+        // This integral captures how the exponential map smoothly transitions from the identity to ew∧ as t goes from 0 to 1.
+        // exp(w^) = I + w^Jl(w)
+    // eye(3) - A*(1/theta^2) * (R - eye(3) - A);
+    // eye(3) + (1-cos(theta))/theta^2 * A + (theta-sin(theta))/theta^3 * A^2;
+        return I + ((1 - cos(theta)) / theta2) * A + ((theta - sin(theta)) / (theta2 * theta)) * A * A;
+
+    case 2:
+        // 0.5*eye(3) - (1/theta^2) * (R - eye(3) - A - 0.5*A^2);
+        // 0.5*eye(3) + (theta-sin(theta))/theta^3 * A + (2*(cos(theta)-1) + theta^2)/(2*theta^4) * A^2
+        return 0.5 * I + (theta - sin(theta)) / (theta2 * theta) * A + (theta2 + 2 * cos(theta) - 2) / (2 * theta2 * theta2) * A * A;
+
+    default: // General case 
+        Eigen::Matrix3d R = I + (sin(theta) / theta) * A + ((1 - cos(theta)) / theta2) * A * A;
+        Eigen::Matrix3d S = I;
+        Eigen::Matrix3d Ak = I;
+        long int kfactorial = 1;
+        for (int k = 1; k <= m; ++k) {
+            kfactorial = kfactorial * k;
+            Ak = (Ak * A).eval();
+            S = (S + (1.0 / kfactorial) * Ak).eval();
+        }
+        if (m == 0) {
+            return R;
+        }
+        else if (m % 2) { // odd 
+            return (1.0 / kfactorial) * I + (pow(-1, (m + 1) / 2) / pow(theta, m + 1)) * A * (R - S);
+        }
+        else { // even
+            return (1.0 / kfactorial) * I + (pow(-1, m / 2) / pow(theta, m)) * (R - S);
+        }
+    }
+
+}
+
+Eigen::Matrix3d Exp_SO3(const Eigen::Vector3d& w) {
+    // Computes the vectorized exponential map for SO(3)
+    return Gamma_SO3(w, 0);
+}
+
+Eigen::Matrix3d LeftJacobian_SO3(const Eigen::Vector3d& w) {
+    // Computes the Left Jacobian of SO(3)
+    return Gamma_SO3(w, 1);
+}
+
+Eigen::Matrix3d RightJacobian_SO3(const Eigen::Vector3d& w) {
+    // Computes the Right Jacobian of SO(3)
+    return Gamma_SO3(-w, 1);
+}
+
+// Compute Analytical state transition matrix
+Eigen::MatrixXd StateTransitionMatrix(Eigen::Vector3d& w, Eigen::Vector3d& a, double dt) {
+    Eigen::Vector3d phi = w * dt;
+    Eigen::Matrix3d G0 = Gamma_SO3(phi, 0); // Computation can be sped up by computing G0,G1,G2 all at once
+    Eigen::Matrix3d G1 = Gamma_SO3(phi, 1); // TODO: These are also needed for the mean propagation, we should not compute twice
+    Eigen::Matrix3d G2 = Gamma_SO3(phi, 2);
+    Eigen::Matrix3d G0t = G0.transpose();
+    Eigen::Matrix3d G1t = G1.transpose();
+    Eigen::Matrix3d G2t = G2.transpose();
+    Eigen::Matrix3d G3t = Gamma_SO3(-phi, 3);
+
+    int dimX = 23;
+    int dimTheta = 6;
+    int dimP = 69;
+    Eigen::MatrixXd Phi = Eigen::MatrixXd::Identity(dimP, dimP);
+
+    // Compute the complicated bias terms (derived for the left invariant case)
+    Eigen::Matrix3d ax = skewSymmetric(a);
+    Eigen::Matrix3d wx = skewSymmetric(w);
+    Eigen::Matrix3d wx2 = wx * wx;
+    double dt2 = dt * dt;
+    double dt3 = dt2 * dt;
+    double theta = w.norm();
+    double theta2 = theta * theta;
+    double theta3 = theta2 * theta;
+    double theta4 = theta3 * theta;
+    double theta5 = theta4 * theta;
+    double theta6 = theta5 * theta;
+    double theta7 = theta6 * theta;
+    double thetadt = theta * dt;
+    double thetadt2 = thetadt * thetadt;
+    double thetadt3 = thetadt2 * thetadt;
+    double sinthetadt = sin(thetadt);
+    double costhetadt = cos(thetadt);
+    double sin2thetadt = sin(2 * thetadt);
+    double cos2thetadt = cos(2 * thetadt);
+    double thetadtcosthetadt = thetadt * costhetadt;
+    double thetadtsinthetadt = thetadt * sinthetadt;
+
+    Eigen::Matrix3d Phi25L = G0t * (ax * G2t * dt2
+        + ((sinthetadt - thetadtcosthetadt) / (theta3)) * (wx * ax)
+        - ((cos2thetadt - 4 * costhetadt + 3) / (4 * theta4)) * (wx * ax * wx)
+        + ((4 * sinthetadt + sin2thetadt - 4 * thetadtcosthetadt - 2 * thetadt) / (4 * theta5)) * (wx * ax * wx2)
+        + ((thetadt2 - 2 * thetadtsinthetadt - 2 * costhetadt + 2) / (2 * theta4)) * (wx2 * ax)
+        - ((6 * thetadt - 8 * sinthetadt + sin2thetadt) / (4 * theta5)) * (wx2 * ax * wx)
+        + ((2 * thetadt2 - 4 * thetadtsinthetadt - cos2thetadt + 1) / (4 * theta6)) * (wx2 * ax * wx2));
+
+    Eigen::Matrix3d Phi35L = G0t * (ax * G3t * dt3
+        - ((thetadtsinthetadt + 2 * costhetadt - 2) / (theta4)) * (wx * ax)
+        - ((6 * thetadt - 8 * sinthetadt + sin2thetadt) / (8 * theta5)) * (wx * ax * wx)
+        - ((2 * thetadt2 + 8 * thetadtsinthetadt + 16 * costhetadt + cos2thetadt - 17) / (8 * theta6)) * (wx * ax * wx2)
+        + ((thetadt3 + 6 * thetadt - 12 * sinthetadt + 6 * thetadtcosthetadt) / (6 * theta5)) * (wx2 * ax)
+        - ((6 * thetadt2 + 16 * costhetadt - cos2thetadt - 15) / (8 * theta6)) * (wx2 * ax * wx)
+        + ((4 * thetadt3 + 6 * thetadt - 24 * sinthetadt - 3 * sin2thetadt + 24 * thetadtcosthetadt) / (24 * theta7)) * (wx2 * ax * wx2));
+
+
+    // TODO: Get better approximation using taylor series when theta < tol
+    const double tol = 1e-6;
+    if (theta < tol) {
+        Phi25L = (1 / 2) * ax * dt2;
+        Phi35L = (1 / 6) * ax * dt3;
+    }
+
+    // Fill out analytical state transition matrices
+    // Compute left-invariant state transisition matrix
+    Phi.block<3, 3>(0, 0) = G0t; // Phi_11
+    Phi.block<3, 3>(3, 0) = -G0t * skewSymmetric(G1 * a) * dt; // Phi_21
+    Phi.block<3, 3>(6, 0) = -G0t * skewSymmetric(G2 * a) * dt2; // Phi_31
+    Phi.block<3, 3>(3, 3) = G0t; // Phi_22
+    Phi.block<3, 3>(6, 3) = G0t * dt; // Phi_32
+    Phi.block<3, 3>(6, 6) = G0t; // Phi_33
+    for (int i = 5; i < dimX; ++i) {
+        Phi.block<3, 3>((i - 2) * 3, (i - 2) * 3) = G0t; // Phi_(3+i)(3+i)
+    }
+    Phi.block<3, 3>(0, dimP - dimTheta) = -G1t * dt; // Phi_15
+    Phi.block<3, 3>(3, dimP - dimTheta) = Phi25L; // Phi_25
+    Phi.block<3, 3>(6, dimP - dimTheta) = Phi35L; // Phi_35
+    Phi.block<3, 3>(3, dimP - dimTheta + 3) = -G1t * dt; // Phi_26
+    Phi.block<3, 3>(6, dimP - dimTheta + 3) = -G0t * G2 * dt2; // Phi_36
+    
+    return Phi;
+}
+
+
+// Compute Discrete noise matrix
+Eigen::MatrixXd DiscreteNoiseMatrix(Eigen::MatrixXd& Phi, double dt) {
+    int dimX = 23;
+    int dimTheta = 6;
+    int dimP = 69;
+    Eigen::MatrixXd G = Eigen::MatrixXd::Identity(dimP, dimP);
+
+    // Continuous noise covariance 
+    Eigen::MatrixXd Qc = Eigen::MatrixXd::Zero(dimP, dimP); // Landmark noise terms will remain zero
+    Qc.block<3, 3>(0, 0) = 0.01 * 0.01 * Eigen::Matrix3d::Identity(); // Gyroscope noise terms
+    Qc.block<3, 3>(3, 3) = 0.1 * 0.1 * Eigen::Matrix3d::Identity(); // Accelerometer noise terms
+    // Landmark noise terms will remain zero
+    Qc.block<3, 3>(dimP - dimTheta, dimP - dimTheta) = 0.00001 * 0.00001 * Eigen::Matrix3d::Identity(); // Gyroscope bias noise terms
+    Qc.block<3, 3>(dimP - dimTheta + 3, dimP - dimTheta + 3) = 0.0001 * 0.0001 * Eigen::Matrix3d::Identity(); // Accelerometer bias noise terms
+
+    // Noise Covariance Discretization
+    Eigen::MatrixXd PhiG = Phi * G;
+    Eigen::MatrixXd Qd = PhiG * Qc * PhiG.transpose() * dt; // Approximated discretized noise matrix (TODO: compute analytical) Eq. 61
+    return Qd;
+}
+
 template <typename S>
 bool IEKF<S>::Predict(const IMU& imu) {
     assert(imu.timestamp_ >= current_time_);
@@ -260,30 +459,42 @@ bool IEKF<S>::Predict(const IMU& imu) {
     VecT new_p = p_ + v_ * dt + 0.5 * (R_ * (imu.acce_ - ba_)) * dt * dt + 0.5 * g_ * dt * dt; // 3.41a
     VecT new_v = v_ + R_ * (imu.acce_ - ba_) * dt + g_ * dt; // 3.41b
     SO3 new_R = R_ * SO3::exp((imu.gyro_ - bg_) * dt); // 3.41c Right multiply because IMU data is in local frame
-    // std::cout << "t: " << imu.timestamp_ << " p: " << new_p.transpose() << " v: " << new_v.transpose() << " R: " << new_R.unit_quaternion().coeffs().transpose() << std::endl;
-    std::cout << "t: " << imu.timestamp_ << " ba: " << ba_.transpose() << " bg: " << bg_.transpose() << " acc: " << imu.acce_.transpose() << " gyro: " << imu.gyro_.transpose() << std::endl;
-
 
     R_ = new_R;
     v_ = new_v;
     p_ = new_p;
     // 其余状态维度不变
 
-    // error state 递推
-    // 计算运动过程雅可比矩阵 F，见(3.42 or 3.47)
-    // F实际上是稀疏矩阵，也可以不用矩阵形式进行相乘而是写成散装形式(faster)，这里为了教学方便，使用矩阵形式
-    Mat69T F = Mat69T::Identity();                                                 // 主对角线
-    F.template block<3, 3>(0, 3) = Mat3T::Identity() * dt;                         // p 对 v
-    F.template block<3, 3>(3, 6) = -R_.matrix() * SO3::hat(imu.acce_ - ba_) * dt;  // v对theta
-    F.template block<3, 3>(3, 12) = -R_.matrix() * dt;                             // v 对 ba
-    F.template block<3, 3>(3, 15) = Mat3T::Identity() * dt;                        // v 对 g
-    F.template block<3, 3>(6, 6) = SO3::exp(-(imu.gyro_ - bg_) * dt).matrix();     // theta 对 theta
-    F.template block<3, 3>(6, 9) = -Mat3T::Identity() * dt;                        // theta 对 bg
+    int dimX = 23;
+    int dimP = 69;
+    int dimTheta = 6;
 
-    // mean and cov prediction
-    dx_ = F * dx_;  // 这行其实没必要算，dx_在重置之后应该为零，因此这步可以跳过或注释掉
-    // F需要参与cov部分计算，所以保留
-    cov_ = F * cov_.eval() * F.transpose() + Q_; // P_pred: Predicted Covariance (3.48b)
+    static std::vector<Vec3d> global_landmarks({ {0, 0, 0}, {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0}, {10, 10, 6.5}, {0, 10, 0}, {0, 10, 6.5}, {0, 5, 10}, {10, 5, 10}, {0, 6, 0}, {0, 8, 0}, {0, 8, 5}, {0, 6, 5}, {0, 2, 2.5}, {0, 4, 2.5}, {0, 4, 5}, {0, 2, 5} });
+    int numLandmarks = global_landmarks.size();
+
+    Eigen::MatrixXd X = Eigen::MatrixXd::Identity(dimX, dimX);
+    X.block(0, 0, 3, 3) = R_.matrix();
+    X.block(0, 3, 3, 1) = v_;
+    X.block(0, 4, 3, 1) = p_;
+    for (int i = 0; i < numLandmarks; i++) {
+        X.block(0, i + 5, 3, 1) = global_landmarks[i];
+    }
+
+    Vec3d a = imu.acce_ - ba_;
+    Vec3d w = imu.gyro_ - bg_;
+    //  ------------ Propagate Covariance --------------- //
+    Eigen::MatrixXd Phi = StateTransitionMatrix(w, a, dt); // State transition matrix Eq. 55
+    Eigen::MatrixXd Qd = DiscreteNoiseMatrix(Phi, dt); // Control noise Eq. 61
+    Eigen::MatrixXd P_pred = Phi * cov_ * Phi.transpose() + Qd; // Predicted noise Eq. 51
+
+    // If we don't want to estimate bias, remove correlation
+    if (true) {
+        P_pred.block(0, dimP - dimTheta, dimP - dimTheta, dimTheta) = Eigen::MatrixXd::Zero(dimP - dimTheta, dimTheta);
+        P_pred.block(dimP - dimTheta, 0, dimTheta, dimP - dimTheta) = Eigen::MatrixXd::Zero(dimTheta, dimP - dimTheta);
+        P_pred.block(dimP - dimTheta, dimP - dimTheta, dimTheta, dimTheta) = Eigen::MatrixXd::Identity(dimTheta, dimTheta);
+    }
+
+    cov_ = P_pred;
     current_time_ = imu.timestamp_;
     return true;
 }
@@ -389,14 +600,6 @@ bool IEKF<S>::ObserveSE3(const SE3& pose, double trans_noise, double ang_noise) 
     return true;
 }
 
-Eigen::Matrix3d skewSymmetric(const Eigen::Vector3d& vec) {
-    Eigen::Matrix3d skew;
-    skew << 0, -vec(2), vec(1),
-        vec(2), 0, -vec(0),
-        -vec(1), vec(0), 0;
-    return skew;
-}
-
 Eigen::MatrixXd Exp_SEK3(const Eigen::VectorXd& v) {
     const double TOLERANCE = 1e-10;
     // Computes the vectorized exponential map for SE_K(3)
@@ -428,33 +631,67 @@ Eigen::MatrixXd Exp_SEK3(const Eigen::VectorXd& v) {
     return X;
 }
 
+Eigen::MatrixXd Adjoint_SEK3(const Eigen::MatrixXd& X) {
+    // Compute Adjoint(X) for X in SE_K(3)
+    int K = X.cols() - 3;
+    Eigen::MatrixXd Adj = Eigen::MatrixXd::Zero(3 + 3 * K, 3 + 3 * K);
+    Eigen::Matrix3d R = X.block<3, 3>(0, 0);
+    Adj.block<3, 3>(0, 0) = R;
+    for (int i = 0; i < K; ++i) {
+        Adj.block<3, 3>(3 + 3 * i, 3 + 3 * i) = R;
+        Adj.block<3, 3>(3 + 3 * i, 0) = skewSymmetric(X.block<3, 1>(0, 3 + i)) * R;
+    }
+    return Adj;
+}
+
+void save_Pose_asTUM(std::string filename, SO3 orient, Vec3d tran, double t)
+{
+    std::ofstream save_points;
+    save_points.setf(std::ios::fixed, std::ios::floatfield);
+    save_points.open(filename.c_str(), std::ios::app);
+
+    Eigen::Quaterniond q(orient.matrix());
+
+    save_points.precision(9);
+    save_points << t << " ";
+    save_points.precision(10);
+    save_points << tran(0) << " "
+        << tran(1) << " "
+        << tran(2) << " "
+        << q.x() << " "
+        << q.y() << " "
+        << q.z() << " "
+        << q.w() << std::endl;
+}
+
 template <typename S>
 bool IEKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
     static std::vector<Vec3d> global_landmarks({ {0, 0, 0}, {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0}, {10, 10, 6.5}, {0, 10, 0}, {0, 10, 6.5}, {0, 5, 10}, {10, 5, 10}, {0, 6, 0}, {0, 8, 0}, {0, 8, 5}, {0, 6, 5}, {0, 2, 2.5}, {0, 4, 2.5}, {0, 4, 5}, {0, 2, 5} });
     int numLandmarks = landmarks.landmarks_.size();
     
     // Resize observation matrix and observations vector to accommodate all landmarks
-    // H is 54 * 69
+    // Observation matrix H is 54 * 69
     Eigen::MatrixXd H = Eigen::MatrixXd::Zero(3 * numLandmarks, 3 * numLandmarks + 15);
     for (int i = 0; i < 3 * numLandmarks; i += 3) {
         H.block<3, 3>(i, 6) = -Eigen::Matrix3d::Identity();
         H.block<3, 3>(i, 9+i) = Eigen::Matrix3d::Identity();
     }
-    // Eigen::VectorXd observations = Eigen::VectorXd::Zero(3 * numLandmarks);
-    // Eigen::VectorXd measurements = Eigen::VectorXd::Zero(3 * numLandmarks);
+    // LOG(INFO) << "H: " << std::endl << H;
 
-    // Eigen::MatrixXd R = Eigen::MatrixXd::Identity(3 * numLandmarks, 3 * numLandmarks) * 0.1; // Example value, tune as necessary
-    // N is 54 * 54
+    // Observation noise N is 54 * 54
     Eigen::MatrixXd N = Eigen::MatrixXd::Zero(3 * numLandmarks, 3 * numLandmarks);
     for (int i = 0; i < 3 * numLandmarks; i += 3) {
-        N.block<3, 3>(i, i) = R_.matrix() * Eigen::Matrix3d::Identity() * 0.1 * R_.matrix().transpose();
+        N.block<3, 3>(i, i) = R_.matrix() * Eigen::Matrix3d::Identity() * 0.01 * R_.matrix().transpose();
     }
+    // LOG(INFO) << "R: " << R_.matrix();
+    // LOG(INFO) << "N: " << std::endl << std::setprecision(2) << N;
 
-    // Z is 54 * 1
+    // Inovation Z is 54 * 1
     Eigen::VectorXd Z = Eigen::VectorXd::Zero(3 * numLandmarks);
     for (int i = 0; i < 3 * numLandmarks; i += 3) {
         Z.segment<3>(i) = R_.matrix() * landmarks.landmarks_[i / 3].tail<3>() - (global_landmarks[i / 3] - p_);
     }
+    // std::cout << "Z: " << std::endl << Z.transpose() << std::endl;
 
 
 
@@ -471,6 +708,22 @@ bool IEKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
 
 
 
+    Eigen::MatrixXd X = Eigen::MatrixXd::Identity(dimX, dimX);
+    X.block(0, 0, 3, 3) = R_.matrix();
+    X.block(0, 3, 3, 1) = v_;
+    X.block(0, 4, 3, 1) = p_;
+    for (int i = 0; i < numLandmarks; i++) {
+        X.block(0, i + 5, 3, 1) = global_landmarks[i];
+    }
+    // std::cout << "X: " << X << std::endl;
+
+
+    // Map from left invariant to right invariant error temporarily
+    Eigen::MatrixXd Adj = Eigen::MatrixXd::Identity(dimP, dimP);
+    Adj.block(0, 0, dimP - dimTheta, dimP - dimTheta) = Adjoint_SEK3(X);
+    cov_ = (Adj * cov_ * Adj.transpose()).eval(); // Eq. 36
+
+
     // Compute Kalman Gain
     Eigen::MatrixXd PHT = cov_ * H.transpose(); // 69*54 = 69*69 * 69*54
     Eigen::MatrixXd Q = H * PHT + N; // Before Eq. 20 // 54*54 = 54*69 * 69*54 + 54*54
@@ -481,28 +734,35 @@ bool IEKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
     Eigen::MatrixXd dX = Exp_SEK3(delta.segment(0, delta.rows() - dimTheta)); // 18*18
     Eigen::VectorXd dTheta = delta.segment(delta.rows() - dimTheta, dimTheta);
 
-    Eigen::MatrixXd X = Eigen::MatrixXd::Zero(dimX, dimX);
-    X.block(0, 0, 3, 3) = R_.matrix();
-    X.block(0, 3, 3, 1) = v_;
-    X.block(0, 4, 3, 1) = p_;
-    for (int i = 0; i < numLandmarks; i++) {
-        X.block(0, i+5, 3, 1) = global_landmarks[i];
-    }
+    // std::cout << "dX: " << dX << std::endl;
+    // std::cout << "dTheta: " << dTheta.transpose() << std::endl;
+
     // Update state
     Eigen::MatrixXd X_new = dX * X; // Right-Invariant Update // Eq. 19
     Eigen::VectorXd Theta_new = Theta + dTheta;
 
-    // update state
-    // 变量顺序：R, v, p, d1, d2, ..., bg, ba，与论文对应
-    R_ = SO3(X.block(0, 0, 3, 3));
-    v_ = X.block(0, 3, 3, 1);
-    p_ = X.block(0, 4, 3, 1);
+    // // update state
+    // // 变量顺序：R, v, p, d1, d2, ..., bg, ba，与论文对应
+    R_ = SO3(X_new.block(0, 0, 3, 3));
+    v_ = X_new.block(0, 3, 3, 1);
+    p_ = X_new.block(0, 4, 3, 1);
+    // std::cout << "R_: " << R_.matrix() << std::endl;
+    // std::cout << "v_: " << v_.transpose() << std::endl;
+    // std::cout << "p_: " << p_.transpose() << std::endl;
 
 
-    // Update Covariance
+    save_Pose_asTUM("log/pose_iekf.txt", R_, p_, landmarks.timestamp_);
+
+
+    // // Update Covariance
     Eigen::MatrixXd IKH = Eigen::MatrixXd::Identity(dimP, dimP) - K * H; // Eq. 19 // 69*69 = 69*69 - 69*54 * 54*69
     cov_ = IKH * cov_ * IKH.transpose() + K * N * K.transpose(); // Joseph update form // Eq. 19 // 69*69 = 69*69 * 69*69 * 69*69 + 69*54 * 54*54 * 54*69
 
+
+    // Map from right invariant back to left invariant error
+    Eigen::MatrixXd AdjInv = Eigen::MatrixXd::Identity(dimP, dimP);
+    AdjInv.block(0, 0, dimP - dimTheta, dimP - dimTheta) = Adjoint_SEK3(Xinv(X_new));
+    cov_ = (AdjInv * cov_ * AdjInv.transpose()).eval();
 
     // this->UpdateAndReset(); // Apply 3.51c
 
