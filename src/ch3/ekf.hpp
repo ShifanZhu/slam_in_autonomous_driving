@@ -455,7 +455,7 @@ bool EKF<S>::Predict(const IMU& imu) {
         return false;
     }
 
-    // nominal state 递推 (3.41)
+    // state 递推
     VecT new_p = p_ + v_ * dt + 0.5 * (R_ * (imu.acce_ - ba_)) * dt * dt + 0.5 * g_ * dt * dt; // 3.41a
     VecT new_v = v_ + R_ * (imu.acce_ - ba_) * dt + g_ * dt; // 3.41b
     SO3 new_R = R_ * SO3::exp((imu.gyro_ - bg_) * dt); // 3.41c Right multiply because IMU data is in local frame
@@ -477,13 +477,14 @@ bool EKF<S>::Predict(const IMU& imu) {
     // F.template block<3, 3>(6, 6) = SO3::exp(-(imu.gyro_ - bg_) * dt).matrix();     // theta 对 theta
     // F.template block<3, 3>(6, 9) = -Mat3T::Identity() * dt;                        // theta 对 bg
     F.template block<3, 3>(0, 3) = Mat3T::Identity() * dt;                         // p 对 v
-    F.template block<3, 3>(0, 6) = -0.5 * dt2 * SO3::hat(imu.acce_ - ba_);  // v对theta
-    F.template block<3, 3>(0, 12) = -0.5 * dt2 * R_.matrix();                             // v 对 ba
-    F.template block<3, 3>(0, 15) = -0.5 * dt2 * Mat3T::Identity();                        // v 对 g
+    // F.template block<3, 3>(0, 6) = 0; // -0.5 * dt2 * SO3::hat(imu.acce_ - ba_);  // v对theta
+    // F.template block<3, 3>(0, 12) = -0.5 * dt2 * R_.matrix();                             // v 对 ba
+    // F.template block<3, 3>(0, 15) = -0.5 * dt2 * Mat3T::Identity();                        // v 对 g
+    F.template block<3, 3>(3, 6) = -R_.matrix() * SO3::hat(imu.acce_-ba_) * dt;                             // v 对 ba
     F.template block<3, 3>(3, 12) = -R_.matrix() * dt;                             // v 对 ba
     F.template block<3, 3>(3, 15) = Mat3T::Identity() * dt;                        // v 对 g
-    F.template block<3, 3>(6, 6) = Mat3T::Identity() + R_.matrix() * dt * SO3::hat(imu.gyro_ - bg_);     // theta 对 theta
-    F.template block<3, 3>(6, 9) = -R_.matrix() * Mat3T::Identity() * dt;                        // theta 对 bg
+    F.template block<3, 3>(6, 6) = SO3::exp(-(imu.gyro_ - bg_) * dt).matrix();     // theta 对 theta
+    F.template block<3, 3>(6, 9) = -Mat3T::Identity() * dt;                        // theta 对 bg
 
     // mean and cov prediction
     // dx_ = F * dx_;  // 这行其实没必要算，dx_在重置之后应该为零，因此这步可以跳过或注释掉
@@ -660,7 +661,8 @@ void save_Pose_asTUM(std::string filename, SO3 orient, Vec3d tran, double t)
 
 template <typename S>
 bool EKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
-    static std::vector<Vec3d> global_landmarks({ {0, 0, 0}, {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0}, {10, 10, 6.5}, {0, 10, 0}, {0, 10, 6.5}, {0, 5, 10}, {10, 5, 10}, {0, 6, 0}, {0, 8, 0}, {0, 8, 5}, {0, 6, 5}, {0, 2, 2.5}, {0, 4, 2.5}, {0, 4, 5}, {0, 2, 5} });
+    // static std::vector<Vec3d> global_landmarks({ {0, 0, 0}, {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0}, {10, 10, 6.5}, {0, 10, 0}, {0, 10, 6.5}, {0, 5, 10}, {10, 5, 10}, {0, 6, 0}, {0, 8, 0}, {0, 8, 5}, {0, 6, 5}, {0, 2, 2.5}, {0, 4, 2.5}, {0, 4, 5}, {0, 2, 5} });
+    static std::vector<Vec3d> global_landmarks({ {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0} });
     int numLandmarks = landmarks.landmarks_.size();
     
     // Resize observation matrix and observations vector to accommodate all landmarks

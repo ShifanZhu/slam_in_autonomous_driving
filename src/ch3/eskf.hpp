@@ -199,6 +199,7 @@ class ESKF {
     void ProjectCov() {
         Mat18T J = Mat18T::Identity();
         J.template block<3, 3>(6, 6) = Mat3T::Identity() - 0.5 * SO3::hat(dx_.template block<3, 1>(6, 0)); // 3.61
+        // LOG(INFO) << "project affect: " << (0.5 * SO3::hat(dx_.template block<3, 1>(6, 0)));
         cov_ = J * cov_ * J.transpose(); // 3.63
     }
 
@@ -410,7 +411,7 @@ Eigen::Matrix3d skewSymmetric(const Eigen::Vector3d& vec) {
 template <typename S>
 bool ESKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
     // static std::vector<Vec3d> global_landmarks({ {0, 0, 0}, {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0}, {10, 10, 6.5}, {0, 10, 0}, {0, 10, 6.5}, {0, 5, 10}, {10, 5, 10}, {0, 6, 0}, {0, 8, 0}, {0, 8, 5}, {0, 6, 5}, {0, 2, 2.5}, {0, 4, 2.5}, {0, 4, 5}, {0, 2, 5} });
-    static std::vector<Vec3d> global_landmarks({ {0, 0, 0}, {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5} });
+    static std::vector<Vec3d> global_landmarks({ {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0} });
     int numLandmarks = landmarks.landmarks_.size();
     
     // Resize observation matrix and observations vector to accommodate all landmarks
