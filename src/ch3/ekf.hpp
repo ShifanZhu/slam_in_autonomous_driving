@@ -671,10 +671,6 @@ bool EKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
     Eigen::VectorXd observations = Eigen::VectorXd::Zero(3 * numLandmarks);
     Eigen::VectorXd measurements = Eigen::VectorXd::Zero(3 * numLandmarks);
     Eigen::MatrixXd R = Eigen::MatrixXd::Identity(3 * numLandmarks, 3 * numLandmarks) * 0.1; // Observation noise, tune as necessary
-    for (int i = 0; i < numLandmarks; ++i) {
-        H.block<3, 3>(3 * i, 0) = -R_.matrix().transpose(); // Partial derivative wrt position
-        H.block<3, 3>(3 * i, 6) = skewSymmetric(R_.matrix().transpose() * (global_landmarks[i] - p_)); // Partial derivative wrt orientation
-    }
 
     for (int i = 0; i < numLandmarks; ++i) {
         const Vec3d& landmark = landmarks.landmarks_[i].tail<3>();
@@ -683,9 +679,11 @@ bool EKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
         // Set the observation vector
         observations.segment<3>(3 * i) = landmark;
         measurements.segment<3>(3 * i) = landmark_local; // landmarks.landmarks_[i].tail<3>();
+        H.block<3, 3>(3 * i, 0) = -R_.matrix().transpose(); // Partial derivative wrt position
+        H.block<3, 3>(3 * i, 6) = skewSymmetric(R_.matrix().transpose() * (global_landmarks[i] - p_)); // Partial derivative wrt orientation
     }
 
-    Eigen::MatrixXd SS = H * cov_ * H.transpose() + R;
+    Eigen::MatrixXd SS = H * cov_ * H.transpose() + R; // 54*54 = 54*18 * 18*18 * 18*54 + 54*54
 
     // Calculate the Kalman gain
     Eigen::MatrixXd K = cov_ * H.transpose() * SS.inverse();         // 18 * 54

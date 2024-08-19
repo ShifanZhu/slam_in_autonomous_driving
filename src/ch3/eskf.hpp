@@ -179,12 +179,12 @@ class ESKF {
         // If we update bias
         if (options_.update_bias_gyro_) {
             bg_ += dx_.template block<3, 1>(9, 0);
-            // LOG(INFO) << "update bg: " << bg_.transpose();
+            LOG(INFO) << "update bg: " << bg_.transpose();
         }
 
         if (options_.update_bias_acce_) {
             ba_ += dx_.template block<3, 1>(12, 0);
-            // LOG(INFO) << "update ba: " << ba_.transpose();
+            LOG(INFO) << "update ba: " << ba_.transpose();
         }
 
         // todo
@@ -292,7 +292,10 @@ bool ESKF<S>::Predict(const IMU& imu) {
     F.template block<3, 3>(6, 9) = -Mat3T::Identity() * dt;                        // theta 对 bg
 
     // mean and cov prediction
-    dx_ = F * dx_;  // 这行其实没必要算，dx_在重置之后应该为零，因此这步可以跳过或注释掉
+    // LOG(INFO) << "dx1 = " << dx_.transpose();
+    // dx_ = F * dx_;  // 这行其实没必要算，dx_在重置之后应该为零，因此这步可以跳过或注释掉
+    // LOG(INFO) << "dx2 = " << dx_.transpose();
+    // LOG(INFO)<<"Q_ = "<<Q_.diagonal().transpose();
     // F需要参与cov部分计算，所以保留
     cov_ = F * cov_.eval() * F.transpose() + Q_; // P_pred: Predicted Covariance (3.48b)
     current_time_ = imu.timestamp_;
@@ -416,12 +419,10 @@ bool ESKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
     
     // Resize observation matrix and observations vector to accommodate all landmarks
     Eigen::MatrixXd H = Eigen::MatrixXd::Zero(3 * numLandmarks, 18);
+    Eigen::MatrixXd x_dx = Eigen::MatrixXd::Identity(18, 18);
     Eigen::VectorXd observations = Eigen::VectorXd::Zero(3 * numLandmarks);
     Eigen::VectorXd measurements = Eigen::VectorXd::Zero(3 * numLandmarks);
-
     Eigen::MatrixXd R = Eigen::MatrixXd::Identity(3 * numLandmarks, 3 * numLandmarks) * 0.1; // Observation noise, tune as necessary
-
-
     for (int i = 0; i < numLandmarks; ++i) {
         const Vec3d& landmark = landmarks.landmarks_[i].tail<3>();
         const Vec3d& landmark_local = R_.matrix().transpose() * (global_landmarks[i] - p_);
@@ -435,25 +436,30 @@ bool ESKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
         // std::cout << "R_: " << R_.matrix() << std::endl;
         // std::cout << "p_: " << p_.transpose() << std::endl;
 
-        auto diff = (landmark - measurements.segment<3>(3 * i)).transpose();
-        if (diff[0] > 0.5) {
-            std::cout << "=========================" << std::endl;
-            std::cout << "diff: " << diff << std::endl;
-            std::cout << "time: " << current_time_ << std::endl;
-            std::cout << "t: " << p_.transpose() << std::endl;
-            std::cout << "R in quaternion: " << R_.unit_quaternion().coeffs().transpose() << " " << R_.unit_quaternion().coeffs().transpose().w() << std::endl;
-            std::cout << "global_landmark:" << global_landmarks[i].transpose() << std::endl;
-            std::cout << "landmark:" << landmarks.landmarks_[i].transpose() << std::endl;
-            std::cout << "landmark_local:" << landmark_local.transpose() << std::endl;
-        }
+        // auto diff = (landmark - measurements.segment<3>(3 * i)).transpose();
+        // if (diff[0] > 0.5) {
+        //     std::cout << "=========================" << std::endl;
+        //     std::cout << "diff: " << diff << std::endl;
+        //     std::cout << "time: " << current_time_ << std::endl;
+        //     std::cout << "t: " << p_.transpose() << std::endl;
+        //     std::cout << "R in quaternion: " << R_.unit_quaternion().coeffs().transpose() << " " << R_.unit_quaternion().coeffs().transpose().w() << std::endl;
+        //     std::cout << "global_landmark:" << global_landmarks[i].transpose() << std::endl;
+        //     std::cout << "landmark:" << landmarks.landmarks_[i].transpose() << std::endl;
+        //     std::cout << "landmark_local:" << landmark_local.transpose() << std::endl;
+        // }
         // Compute the Jacobian for the current landmark
         H.block<3, 3>(3 * i, 0) = -R_.matrix().transpose(); // Partial derivative wrt position
-        H.block<3, 3>(3 * i, 3) = Eigen::Matrix3d::Zero(); // Partial derivative wrt velocity
+        // H.block<3, 3>(3 * i, 3) = Eigen::Matrix3d::Zero(); // Partial derivative wrt velocity
         H.block<3, 3>(3 * i, 6) = skewSymmetric(R_.matrix().transpose() * (global_landmarks[i] - p_)); // Partial derivative wrt orientation
-        H.block<3, 3>(3 * i, 9) = Eigen::Matrix3d::Zero(); // Partial derivative wrt gyroscope bias
-        H.block<3, 3>(3 * i, 12) = Eigen::Matrix3d::Zero(); // Partial derivative wrt accelerometer bias
-        H.block<3, 3>(3 * i, 15) = Eigen::Matrix3d::Zero(); // Partial derivative wrt gravity vector
+        // H.block<3, 3>(3 * i, 9) = Eigen::Matrix3d::Zero(); // Partial derivative wrt gyroscope bias
+        // H.block<3, 3>(3 * i, 12) = Eigen::Matrix3d::Zero(); // Partial derivative wrt accelerometer bias
+        // H.block<3, 3>(3 * i, 15) = Eigen::Matrix3d::Zero(); // Partial derivative wrt gravity vector
     }
+
+    Eigen::Vector3d dq = dx_.segment(6, 3) * 0.5;
+    x_dx.block<3, 3>(6, 6) = SO3::jr(dq).inverse();
+    // LOG(INFO)<<"x_dx: "<<x_dx;
+    H = H * x_dx;
 
     // LOG(INFO) << "H dim: " << H.rows() << "x" << H.cols();      // 54 * 18
     // LOG(INFO) << "observations dim: " << observations.rows() << "x" << observations.cols();                     // 54 * 1

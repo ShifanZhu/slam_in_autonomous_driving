@@ -52,6 +52,7 @@ bool LooselyLIO::LoadFromYAML(const std::string &yaml_file) {
 
 void LooselyLIO::ProcessMeasurements(const MeasureGroup &meas) {
     LOG(INFO) << "call meas, imu: " << meas.imu_.size() << ", lidar pts: " << meas.lidar_->size();
+    // step six
     measures_ = meas;
 
     if (imu_need_init_) {
