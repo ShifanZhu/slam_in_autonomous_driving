@@ -35,13 +35,16 @@ class IEKF {
     using SO3 = Sophus::SO3<S>;                     // 旋转变量类型
     using VecT = Eigen::Matrix<S, 3, 1>;            // 向量类型
     using Vec18T = Eigen::Matrix<S, 18, 1>;         // 18维向量类型
-    using Vec69T = Eigen::Matrix<S, 69, 1>;         // 18维向量类型
+    using Vec27T = Eigen::Matrix<S, 27, 1>;         // 27维向量类型
+    using Vec69T = Eigen::Matrix<S, 69, 1>;         // 69维向量类型
     using Mat3T = Eigen::Matrix<S, 3, 3>;           // 3x3矩阵类型
     // using MotionNoiseT = Eigen::Matrix<S, 18, 18>;  // 运动噪声类型
-    using MotionNoiseT = Eigen::Matrix<S, 69, 69>;  // 运动噪声类型
+    using MotionNoiseT = Eigen::Matrix<S, 27, 27>;  // 运动噪声类型
+    // using MotionNoiseT = Eigen::Matrix<S, 69, 69>;  // 运动噪声类型
     using OdomNoiseT = Eigen::Matrix<S, 3, 3>;      // 里程计噪声类型
     using GnssNoiseT = Eigen::Matrix<S, 6, 6>;      // GNSS噪声类型
     using Mat18T = Eigen::Matrix<S, 18, 18>;        // 18维方差类型
+    using Mat27T = Eigen::Matrix<S, 27, 27>;        // 27维方差类型
     using Mat69T = Eigen::Matrix<S, 69, 69>;        // 69维方差类型
     using NavStateT = NavState<S>;                  // 整体名义状态变量类型
 
@@ -91,8 +94,9 @@ class IEKF {
         bg_ = init_bg;
         ba_ = init_ba;
         g_ = gravity;
-        cov_ = Mat69T::Identity() * 1e-4;
-        p_ = VecT(20, 25, 6);
+        cov_ = Mat27T::Identity() * 1e-4;
+        // cov_ = Mat69T::Identity() * 1e-4;
+        p_ = VecT(20, 25, 10);
     }
 
     /// 使用IMU递推
@@ -138,7 +142,7 @@ class IEKF {
     }
 
     /// 设置协方差
-    void SetCov(const Mat69T& cov) { cov_ = cov; }
+    void SetCov(const Mat27T& cov) { cov_ = cov; }
 
     /// 获取重力
     Vec3d GetGravity() const { return g_; }
@@ -164,7 +168,8 @@ class IEKF {
         // Q_ is 69*69: R, v, p, d1, d2, ..., bg, ba
         double landmark_var = 0.1;
         double l2 = landmark_var * landmark_var;
-        Q_.diagonal() << et2, et2, et2, ev2, ev2, ev2, 0, 0, 0, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, eg2, eg2, eg2, ea2, ea2, ea2;
+        // Q_.diagonal() << et2, et2, et2, ev2, ev2, ev2, 0, 0, 0, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, eg2, eg2, eg2, ea2, ea2, ea2;
+        Q_.diagonal() << et2, et2, et2, ev2, ev2, ev2, 0, 0, 0, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, l2, eg2, eg2, eg2, ea2, ea2, ea2;
 
 
         // 设置里程计噪声
@@ -207,7 +212,8 @@ class IEKF {
 
     /// 对P阵进行投影，参考式(3.63)
     void ProjectCov() {
-        Mat69T J = Mat69T::Identity();
+        Mat27T J = Mat27T::Identity();
+        // Mat69T J = Mat69T::Identity();
         J.template block<3, 3>(6, 6) = Mat3T::Identity() - 0.5 * SO3::hat(dx_.template block<3, 1>(6, 0)); // 3.61
         cov_ = J * cov_ * J.transpose(); // 3.63
     }
@@ -226,10 +232,12 @@ class IEKF {
     /// 误差状态
     // dx is 18*1: position, velocity, rotation, bias_gyro, bias_acce, gravity
     // Vec18T dx_ = Vec18T::Zero();
-    Vec69T dx_ = Vec69T::Zero();
+    Vec27T dx_ = Vec27T::Zero();
+    // Vec69T dx_ = Vec69T::Zero();
 
     /// 协方差阵
-    Mat69T cov_ = Mat69T::Identity();
+    Mat27T cov_ = Mat27T::Identity();
+    // Mat69T cov_ = Mat69T::Identity();
 
     /// 噪声阵
     MotionNoiseT Q_ = MotionNoiseT::Zero();
@@ -250,7 +258,8 @@ using IEKFF = IEKF<float>;
 
 const Eigen::MatrixXd Xinv(Eigen::MatrixXd& X) {
     // const Eigen::MatrixXd Xinv(Eigen::MatrixXd & X) const {
-    int dimX = 23;
+    int dimX = 9;
+    // int dimX = 23; // for 18 landmarks
     Eigen::MatrixXd Xinv = Eigen::MatrixXd::Identity(dimX, dimX);
     Eigen::Matrix3d RT = X.block<3, 3>(0, 0).transpose();
     Xinv.block<3, 3>(0, 0) = RT;
@@ -285,7 +294,7 @@ Eigen::Matrix3d Gamma_SO3(const Eigen::Vector3d& w, int m) {
 
     // Closed form solution for the first 3 cases
     switch (m) {
-    case 0: // Exp map of SO(3) // Taylor expansion: Directly computes the rotation matrix for a given angular velocity vector.
+    case 0: // Exp map of SO(3) // Taylor expansion: Directly computes the rotation matrix for a given angular vector.
         return I + (sin(theta) / theta) * A + ((1 - cos(theta)) / theta2) * A * A;
 
     case 1: // Left Jacobian of SO(3) // Mapping small angular changes in the Lie algebra to changes in the Lie group
@@ -349,9 +358,11 @@ Eigen::MatrixXd StateTransitionMatrix(Eigen::Vector3d& w, Eigen::Vector3d& a, do
     Eigen::Matrix3d G2t = G2.transpose();
     Eigen::Matrix3d G3t = Gamma_SO3(-phi, 3);
 
-    int dimX = 23;
+    int dimX = 9;
+    // int dimX = 23; // R v p 18 landmark bg ba
     int dimTheta = 6;
-    int dimP = 69;
+    int dimP = 27;
+    // int dimP = 69;
     Eigen::MatrixXd Phi = Eigen::MatrixXd::Identity(dimP, dimP);
 
     // Compute the complicated bias terms (derived for the left invariant case)
@@ -424,9 +435,11 @@ Eigen::MatrixXd StateTransitionMatrix(Eigen::Vector3d& w, Eigen::Vector3d& a, do
 
 // Compute Discrete noise matrix
 Eigen::MatrixXd DiscreteNoiseMatrix(Eigen::MatrixXd& Phi, double dt) {
-    int dimX = 23;
+    int dimX = 9;
+    // int dimX = 23;
     int dimTheta = 6;
-    int dimP = 69;
+    int dimP = 27;
+    // int dimP = 69;
     Eigen::MatrixXd G = Eigen::MatrixXd::Identity(dimP, dimP);
 
     // Continuous noise covariance 
@@ -465,11 +478,14 @@ bool IEKF<S>::Predict(const IMU& imu) {
     p_ = new_p;
     // 其余状态维度不变
 
-    int dimX = 23;
-    int dimP = 69;
+    int dimX = 9;
+    int dimP = 27;
+    // int dimX = 23;
+    // int dimP = 69;
     int dimTheta = 6;
 
-    static std::vector<Vec3d> global_landmarks({ {0, 0, 0}, {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0}, {10, 10, 6.5}, {0, 10, 0}, {0, 10, 6.5}, {0, 5, 10}, {10, 5, 10}, {0, 6, 0}, {0, 8, 0}, {0, 8, 5}, {0, 6, 5}, {0, 2, 2.5}, {0, 4, 2.5}, {0, 4, 5}, {0, 2, 5} });
+    // static std::vector<Vec3d> global_landmarks({ {0, 0, 0}, {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0}, {10, 10, 6.5}, {0, 10, 0}, {0, 10, 6.5}, {0, 5, 10}, {10, 5, 10}, {0, 6, 0}, {0, 8, 0}, {0, 8, 5}, {0, 6, 5}, {0, 2, 2.5}, {0, 4, 2.5}, {0, 4, 5}, {0, 2, 5} });
+    static std::vector<Vec3d> global_landmarks({ {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0} });
     int numLandmarks = global_landmarks.size();
 
     Eigen::MatrixXd X = Eigen::MatrixXd::Identity(dimX, dimX);
@@ -522,7 +538,8 @@ bool IEKF<S>::ObserveWheelSpeed(const Odom& odom) {
     dx_ = K * (vel_world - v_); // 3.68
 
     // update cov
-    cov_ = (Mat69T::Identity() - K * H) * cov_;
+    cov_ = (Mat27T::Identity() - K * H) * cov_;
+    // cov_ = (Mat69T::Identity() - K * H) * cov_;
 
     UpdateAndReset();
     return true;
@@ -594,7 +611,8 @@ bool IEKF<S>::ObserveSE3(const SE3& pose, double trans_noise, double ang_noise) 
     innov.template tail<3>() = (R_.inverse() * pose.so3()).log();  // 旋转部分(3.67)
     // dx is 18*1: position, velocity, rotation, bias_gyro, bias_acce, gravity
     dx_ = K * innov; // 3.51b
-    cov_ = (Mat69T::Identity() - K * H) * cov_;  // Corrected covariance (3.51d)
+    cov_ = (Mat27T::Identity() - K * H) * cov_;  // Corrected covariance (3.51d)
+    // cov_ = (Mat69T::Identity() - K * H) * cov_;  // Corrected covariance (3.51d)
 
     this->UpdateAndReset(); // Apply 3.51c
     return true;
@@ -666,7 +684,8 @@ void save_Pose_asTUM(std::string filename, SO3 orient, Vec3d tran, double t)
 
 template <typename S>
 bool IEKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
-    static std::vector<Vec3d> global_landmarks({ {0, 0, 0}, {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0}, {10, 10, 6.5}, {0, 10, 0}, {0, 10, 6.5}, {0, 5, 10}, {10, 5, 10}, {0, 6, 0}, {0, 8, 0}, {0, 8, 5}, {0, 6, 5}, {0, 2, 2.5}, {0, 4, 2.5}, {0, 4, 5}, {0, 2, 5} });
+    // static std::vector<Vec3d> global_landmarks({ {0, 0, 0}, {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0}, {10, 10, 6.5}, {0, 10, 0}, {0, 10, 6.5}, {0, 5, 10}, {10, 5, 10}, {0, 6, 0}, {0, 8, 0}, {0, 8, 5}, {0, 6, 5}, {0, 2, 2.5}, {0, 4, 2.5}, {0, 4, 5}, {0, 2, 5} });
+    static std::vector<Vec3d> global_landmarks({ {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0} });
     int numLandmarks = landmarks.landmarks_.size();
     
     // Resize observation matrix and observations vector to accommodate all landmarks
@@ -681,7 +700,7 @@ bool IEKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
     // Observation noise N is 54 * 54
     Eigen::MatrixXd N = Eigen::MatrixXd::Zero(3 * numLandmarks, 3 * numLandmarks);
     for (int i = 0; i < 3 * numLandmarks; i += 3) {
-        N.block<3, 3>(i, i) = R_.matrix() * Eigen::Matrix3d::Identity() * 0.01 * R_.matrix().transpose();
+        N.block<3, 3>(i, i) = R_.matrix() * Eigen::Matrix3d::Identity() * 0.03 * R_.matrix().transpose();
     }
     // LOG(INFO) << "R: " << R_.matrix();
     // LOG(INFO) << "N: " << std::endl << std::setprecision(2) << N;
@@ -695,9 +714,11 @@ bool IEKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
 
 
 
-    int dimX = 23; // state_.dimX();
+    int dimX = 9; // state_.dimX();
+    // int dimX = 23; // state_.dimX();
     int dimTheta = 6; // state_.dimTheta();
-    int dimP = 69;
+    int dimP = 27;
+    // int dimP = 69;
 
     // Remove bias
     Eigen::MatrixXd Theta = Eigen::Matrix<double, 6, 1>::Zero();

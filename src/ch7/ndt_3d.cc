@@ -24,12 +24,13 @@ void Ndt3d::BuildVoxels() {
         auto pt = ToVec3d(target_->points[idx]);
         auto key = (pt * options_.inv_voxel_size_).cast<int>();
         if (grids_.find(key) == grids_.end()) {
-            grids_.insert({key, {idx}});
+            grids_.insert({key, {idx}}); // no key found, key and vector{idx}, {idx} will be initialized to first memeber of VoxelData
         } else {
-            grids_[key].idx_.emplace_back(idx);
+            grids_[key].idx_.emplace_back(idx); // found key, push_back the idx value of a point into the grid's VoxelData's idx_
         }
     });
 
+    // v.first is key, v.second is VoxelData
     /// 计算每个体素中的均值和协方差
     std::for_each(std::execution::par_unseq, grids_.begin(), grids_.end(), [this](auto& v) {
         if (v.second.idx_.size() > options_.min_pts_in_voxel_) {
@@ -50,6 +51,7 @@ void Ndt3d::BuildVoxels() {
 
             Mat3d inv_lambda = Vec3d(1.0 / lambda[0], 1.0 / lambda[1], 1.0 / lambda[2]).asDiagonal();
 
+            // A = U * lambda * V^T  and  A-1 = V * lambda-1 * U^T
             // v.second.info_ = (v.second.sigma_ + Mat3d::Identity() * 1e-3).inverse();  // 避免出nan
             v.second.info_ = svd.matrixV() * inv_lambda * svd.matrixU().transpose();
         }
@@ -107,9 +109,9 @@ bool Ndt3d::AlignNdt(SE3& init_pose) {
             for (int i = 0; i < nearby_grids_.size(); ++i) {
                 auto key_off = key + nearby_grids_[i];
                 auto it = grids_.find(key_off);
-                int real_idx = idx * num_residual_per_point + i;
+                int real_idx = idx * num_residual_per_point + i; // real_idx is 
                 if (it != grids_.end()) {
-                    auto& v = it->second;  // voxel
+                    auto& v = it->second;  // .second is VoxelData
                     Vec3d e = qs - v.mu_;
 
                     // check chi2 th

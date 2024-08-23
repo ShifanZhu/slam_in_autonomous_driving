@@ -94,6 +94,9 @@
         "__functional_base": "cpp",
         "__locale": "cpp",
         "ios": "cpp",
-        "__bit_reference": "cpp"
+        "__bit_reference": "cpp",
+        "__nullptr": "cpp",
+        "__string": "cpp",
+        "__tuple": "cpp"
     }
 }

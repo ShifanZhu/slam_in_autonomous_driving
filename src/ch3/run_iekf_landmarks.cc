@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
         fout << std::endl;
     };
 
-    std::ofstream fout("./data/ch3/landmarks_corrected_result.txt");
+    std::ofstream fout("./data/ch3/landmarks_iekf_result.txt");
     bool imu_inited = false, gnss_inited = false;
 
     std::shared_ptr<sad::ui::PangolinWindow> ui = nullptr;
@@ -62,6 +62,8 @@ int main(int argc, char** argv) {
 
     /// 设置各类回调函数
     bool first_gnss_set = false;
+    double prev_disturb_time = 0;
+
     Vec3d origin = Vec3d::Zero();
 
     // Set all these process callback functions in IO.
@@ -77,8 +79,9 @@ int main(int argc, char** argv) {
               // 读取初始零偏，设置IEKF
               sad::IEKFD::Options options;
               // 噪声由静止初始化器估计
-              options.gyro_var_ = sqrt(imu_init.GetCovGyro()[0]);
-              options.acce_var_ = sqrt(imu_init.GetCovAcce()[0]);
+              // comment out to use defaule value
+            //   options.gyro_var_ = sqrt(imu_init.GetCovGyro()[0]);
+            //   options.acce_var_ = sqrt(imu_init.GetCovAcce()[0]);
               LOG(INFO) << "imu_init.GetGravity() " << imu_init.GetGravity().transpose();
               iekf.SetInitialConditions(options, imu_init.GetInitBg(), imu_init.GetInitBa(), imu_init.GetGravity());
               imu_inited = true;
@@ -102,7 +105,10 @@ int main(int argc, char** argv) {
         if (!imu_inited) {
             return;
         }
-        if (abs(landmarks.timestamp_ - 20) < 0.001) {
+        // if (abs(landmarks.timestamp_ - 20) < 0.001) {
+        if (abs(landmarks.timestamp_ - prev_disturb_time) > 2.999) {
+            prev_disturb_time = landmarks.timestamp_;
+            LOG(INFO) << "landmarks.timestamp_ = " << landmarks.timestamp_;
             double roll = 0;  // phi
             double pitch = 0; // theta
             double yaw = 30;   // psi

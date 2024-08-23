@@ -92,7 +92,7 @@ class EKF {
         ba_ = init_ba;
         g_ = gravity;
         cov_ = Mat18T::Identity() * 1e-4;
-        p_ = VecT(20, 25, 6);
+        p_ = VecT(20, 25, 10);
     }
 
     /// 使用IMU递推
@@ -660,7 +660,7 @@ void save_Pose_asTUM(std::string filename, SO3 orient, Vec3d tran, double t)
 }
 
 template <typename S>
-bool EKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
+bool EKF<S>::ObserveLandmarks(const sad::Landmarks& landmarks) {
     // static std::vector<Vec3d> global_landmarks({ {0, 0, 0}, {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0}, {10, 10, 6.5}, {0, 10, 0}, {0, 10, 6.5}, {0, 5, 10}, {10, 5, 10}, {0, 6, 0}, {0, 8, 0}, {0, 8, 5}, {0, 6, 5}, {0, 2, 2.5}, {0, 4, 2.5}, {0, 4, 5}, {0, 2, 5} });
     static std::vector<Vec3d> global_landmarks({ {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0} });
     int numLandmarks = landmarks.landmarks_.size();

@@ -89,7 +89,7 @@ class ESKF {
         ba_ = init_ba;
         g_ = gravity;
         cov_ = Mat18T::Identity() * 1e-4;
-        p_ = VecT(20, 25, 6);
+        p_ = VecT(20, 25, 10);
     }
 
     /// 使用IMU递推

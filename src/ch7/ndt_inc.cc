@@ -174,7 +174,6 @@ bool IncNdt3d::AlignNdt(SE3& init_pose) {
 
         // 累加Hessian和error,计算dx
         double total_res = 0;
-
         int effective_num = 0;
 
         Mat6d H = Mat6d::Zero();
@@ -256,7 +255,7 @@ void IncNdt3d::ComputeResidualAndJacobians(const SE3& input_pose, Mat18d& HTVH, 
             /// 这里要检查高斯分布是否已经估计
             if (it != grids_.end() && it->second->second.ndt_estimated_) {
                 auto& v = it->second->second;  // voxel
-                Vec3d e = qs - v.mu_;
+                Vec3d e = qs - v.mu_; // residual = 转换后的点 - 栅格均值
 
                 // check chi2 th
                 double res = e.transpose() * v.info_ * e;
@@ -298,8 +297,10 @@ void IncNdt3d::ComputeResidualAndJacobians(const SE3& input_pose, Mat18d& HTVH, 
         total_res += errors[idx].transpose() * infos[idx] * errors[idx];
         effective_num++;
 
-        HTVH += jacobians[idx].transpose() * infos[idx] * jacobians[idx] * info_ratio;
-        HTVr += -jacobians[idx].transpose() * infos[idx] * errors[idx] * info_ratio;
+        // V is the observation noise, which is related to gaussian distribution, not only redifined value (1e-2) like ESKF
+        // H is redidual w.r.t. state, which is the jacobian of residual w.r.t. state
+        HTVH += jacobians[idx].transpose() * infos[idx] * jacobians[idx] * info_ratio; // partial 8.11
+        HTVr += -jacobians[idx].transpose() * infos[idx] * errors[idx] * info_ratio; // partial 8.11 * residual
     }
     // seq five
     LOG(INFO) << "effective: " << effective_num;
