@@ -65,8 +65,8 @@ class ESKF {
         double gnss_ang_noise_ = 1.0 * math::kDEG2RAD;  // GNSS旋转噪声
 
         /// 其他配置
-        bool update_bias_gyro_ = false;  // 是否更新陀螺bias
-        bool update_bias_acce_ = false;  // 是否更新加计bias
+        bool update_bias_gyro_ = true;  // 是否更新陀螺bias
+        bool update_bias_acce_ = true;  // 是否更新加计bias
     };
 
     /**
@@ -188,10 +188,11 @@ class ESKF {
         }
 
         // todo
-        // g_ += dx_.template block<3, 1>(15, 0); //? why we update gravity since its derivetive is zero 3.25f?
+        g_ += dx_.template block<3, 1>(15, 0); //? why we update gravity since its derivetive is zero 3.25f?
         //// LOG(INFO) << "update delta g: " << dx_.template block<3, 1>(15, 0).transpose();
 
         ProjectCov(); // 3.63
+        non_zero_dx_ = dx_;
         dx_.setZero(); //? why we set dx to zero?
     }
 
@@ -217,6 +218,7 @@ class ESKF {
     /// 误差状态
     // dx is 18*1: position, velocity, rotation, bias_gyro, bias_acce, gravity
     Vec18T dx_ = Vec18T::Zero();
+    Vec18T non_zero_dx_ = Vec18T::Zero();
 
     /// 协方差阵
     Mat18T cov_ = Mat18T::Identity();
@@ -289,7 +291,7 @@ bool ESKF<S>::Predict(const IMU& imu) {
     F.template block<3, 3>(3, 12) = -R_.matrix() * dt;                             // v 对 ba
     F.template block<3, 3>(3, 15) = Mat3T::Identity() * dt;                        // v 对 g
     F.template block<3, 3>(6, 6) = SO3::exp(-(imu.gyro_ - bg_) * dt).matrix();     // theta 对 theta
-    F.template block<3, 3>(6, 9) = -Mat3T::Identity() * dt;                        // theta 对 bg
+    F.template block<3, 3>(6, 9) = -(Mat3T::Identity() - SO3::hat(non_zero_dx_.segment(6, 3)) * dt) * dt;                        // theta 对 bg
 
     // mean and cov prediction
     // LOG(INFO) << "dx1 = " << dx_.transpose();
@@ -414,7 +416,8 @@ Eigen::Matrix3d skewSymmetric(const Eigen::Vector3d& vec) {
 template <typename S>
 bool ESKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
     // static std::vector<Vec3d> global_landmarks({ {0, 0, 0}, {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0}, {10, 10, 6.5}, {0, 10, 0}, {0, 10, 6.5}, {0, 5, 10}, {10, 5, 10}, {0, 6, 0}, {0, 8, 0}, {0, 8, 5}, {0, 6, 5}, {0, 2, 2.5}, {0, 4, 2.5}, {0, 4, 5}, {0, 2, 5} });
-    static std::vector<Vec3d> global_landmarks({ {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0} });
+    // static std::vector<Vec3d> global_landmarks({ {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0} });
+    static std::vector<Vec3d> global_landmarks({ {0, 0, 6.5}, {10, 10, 0} });
     int numLandmarks = landmarks.landmarks_.size();
     
     // Resize observation matrix and observations vector to accommodate all landmarks
@@ -422,7 +425,7 @@ bool ESKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
     Eigen::MatrixXd x_dx = Eigen::MatrixXd::Identity(18, 18);
     Eigen::VectorXd observations = Eigen::VectorXd::Zero(3 * numLandmarks);
     Eigen::VectorXd measurements = Eigen::VectorXd::Zero(3 * numLandmarks);
-    Eigen::MatrixXd R = Eigen::MatrixXd::Identity(3 * numLandmarks, 3 * numLandmarks) * 0.1; // Observation noise, tune as necessary
+    Eigen::MatrixXd R = Eigen::MatrixXd::Identity(3 * numLandmarks, 3 * numLandmarks) * 0.5; // Observation noise, tune as necessary
     for (int i = 0; i < numLandmarks; ++i) {
         const Vec3d& landmark = landmarks.landmarks_[i].tail<3>();
         const Vec3d& landmark_local = R_.matrix().transpose() * (global_landmarks[i] - p_);
@@ -456,9 +459,9 @@ bool ESKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
         // H.block<3, 3>(3 * i, 15) = Eigen::Matrix3d::Zero(); // Partial derivative wrt gravity vector
     }
 
-    Eigen::Vector3d dq = dx_.segment(6, 3) * 0.5;
-    x_dx.block<3, 3>(6, 6) = SO3::jr(dq).inverse();
-    // LOG(INFO)<<"x_dx: "<<x_dx;
+    // static Eigen::Vector3d dq; // = dx_.segment(6, 3) * 0.5;
+    x_dx.block<3, 3>(6, 6) = SO3::jr(non_zero_dx_.segment(6, 3)).inverse();
+    LOG(INFO)<<"x_dx: "<<x_dx;
     H = H * x_dx;
 
     // LOG(INFO) << "H dim: " << H.rows() << "x" << H.cols();      // 54 * 18
@@ -481,6 +484,7 @@ bool ESKF<S>:: ObserveLandmarks(const sad::Landmarks& landmarks) {
 
     // Update the error state estimate
     dx_ = K * innovation; // 3.51b  // 18 * 1
+    // dq = dx_.segment(6, 3);
     // std::cout << "dx_: " << dx_.transpose() << std::endl;
     // std::cout << "innovation: " << innovation.transpose() << std::endl;
     cov_ = (Mat18T::Identity() - K * H) * cov_;  // Corrected covariance (3.51d)

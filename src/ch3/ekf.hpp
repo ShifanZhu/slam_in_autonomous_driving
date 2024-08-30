@@ -68,8 +68,8 @@ class EKF {
         double gnss_ang_noise_ = 1.0 * math::kDEG2RAD;  // GNSS旋转噪声
 
         /// 其他配置
-        bool update_bias_gyro_ = false;  // 是否更新陀螺bias
-        bool update_bias_acce_ = false;  // 是否更新加计bias
+        bool update_bias_gyro_ = true;  // 是否更新陀螺bias
+        bool update_bias_acce_ = true;  // 是否更新加计bias
     };
 
     /**
@@ -662,7 +662,8 @@ void save_Pose_asTUM(std::string filename, SO3 orient, Vec3d tran, double t)
 template <typename S>
 bool EKF<S>::ObserveLandmarks(const sad::Landmarks& landmarks) {
     // static std::vector<Vec3d> global_landmarks({ {0, 0, 0}, {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0}, {10, 10, 6.5}, {0, 10, 0}, {0, 10, 6.5}, {0, 5, 10}, {10, 5, 10}, {0, 6, 0}, {0, 8, 0}, {0, 8, 5}, {0, 6, 5}, {0, 2, 2.5}, {0, 4, 2.5}, {0, 4, 5}, {0, 2, 5} });
-    static std::vector<Vec3d> global_landmarks({ {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0} });
+    // static std::vector<Vec3d> global_landmarks({ {0, 0, 6.5}, {10, 0, 0}, {10, 0, 6.5}, {10, 10, 0} });
+    static std::vector<Vec3d> global_landmarks({ {0, 0, 6.5}, {10, 10, 0} });
     int numLandmarks = landmarks.landmarks_.size();
     
     // Resize observation matrix and observations vector to accommodate all landmarks
@@ -670,7 +671,7 @@ bool EKF<S>::ObserveLandmarks(const sad::Landmarks& landmarks) {
     Eigen::MatrixXd H = Eigen::MatrixXd::Zero(3 * numLandmarks, 18);
     Eigen::VectorXd observations = Eigen::VectorXd::Zero(3 * numLandmarks);
     Eigen::VectorXd measurements = Eigen::VectorXd::Zero(3 * numLandmarks);
-    Eigen::MatrixXd R = Eigen::MatrixXd::Identity(3 * numLandmarks, 3 * numLandmarks) * 0.1; // Observation noise, tune as necessary
+    Eigen::MatrixXd R = Eigen::MatrixXd::Identity(3 * numLandmarks, 3 * numLandmarks) * 0.5; // Observation noise, tune as necessary
 
     for (int i = 0; i < numLandmarks; ++i) {
         const Vec3d& landmark = landmarks.landmarks_[i].tail<3>();
@@ -698,6 +699,20 @@ bool EKF<S>::ObserveLandmarks(const sad::Landmarks& landmarks) {
     v_ += dx.template block<3, 1>(3, 0);
     R_ = R_ * SO3::exp(dx.template block<3, 1>(6, 0));
     cov_ = (Mat18T::Identity() - K * H) * cov_;  // Corrected covariance (3.51d)
+
+        // If we update bias
+    if (options_.update_bias_gyro_) {
+        bg_ += dx.template block<3, 1>(9, 0);
+        // LOG(INFO) << "update bg: " << bg_.transpose();
+    }
+
+    if (options_.update_bias_acce_) {
+        ba_ += dx.template block<3, 1>(12, 0);
+        // LOG(INFO) << "update ba: " << ba_.transpose();
+    }
+
+    // todo
+    g_ += dx.template block<3, 1>(15, 0); //? why we update gravity since its derivetive is zero 3.25f?
 
     save_Pose_asTUM("log/pose_ekf.txt", R_, p_, landmarks.timestamp_);
 

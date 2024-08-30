@@ -13,7 +13,8 @@
 #include <fstream>
 #include <iomanip>
 
-DEFINE_string(txt_path, "./data/ch3/imu_points_imu_sim.txt", "数据文件路径");
+DEFINE_string(txt_path, "./data/ch3/imu_points_imu_sim_2points.txt", "数据文件路径");
+// DEFINE_string(txt_path, "./data/ch3/imu_points_imu_sim_4points.txt", "数据文件路径");
 
 DEFINE_bool(with_ui, true, "是否显示图形界面");
 
@@ -105,27 +106,27 @@ int main(int argc, char** argv) {
         if (!imu_inited) {
             return;
         }
-        // if (abs(landmarks.timestamp_ - 20) < 0.001) {
-        if (abs(landmarks.timestamp_ - prev_disturb_time) > 2.999) {
-            prev_disturb_time = landmarks.timestamp_;
-            LOG(INFO) << "landmarks.timestamp_ = " << landmarks.timestamp_;
-            double roll = 0;  // phi
-            double pitch = 0; // theta
-            double yaw = 30;   // psi
-            Eigen::Matrix3d R_roll = Eigen::AngleAxisd(roll, Eigen::Vector3d::UnitX()).toRotationMatrix();
-            Eigen::Matrix3d R_pitch = Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()).toRotationMatrix();
-            Eigen::Matrix3d R_yaw = Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()).toRotationMatrix();
-            Eigen::Matrix3d Rwb = R_yaw * R_pitch * R_roll;
-            // get roll, pitch, yaw
-            Vec3d euler_before = ekf.GetOrientation().matrix().eulerAngles(2, 1, 0);
-            LOG(INFO) << "euler_before = " << euler_before.transpose() * 180 / M_PI;
+        // // if (abs(landmarks.timestamp_ - 20) < 0.001) {
+        // if (abs(landmarks.timestamp_ - prev_disturb_time) > 2.999) {
+        //     prev_disturb_time = landmarks.timestamp_;
+        //     LOG(INFO) << "landmarks.timestamp_ = " << landmarks.timestamp_;
+        //     double roll = 0;  // phi
+        //     double pitch = 0; // theta
+        //     double yaw = 30;   // psi
+        //     Eigen::Matrix3d R_roll = Eigen::AngleAxisd(roll, Eigen::Vector3d::UnitX()).toRotationMatrix();
+        //     Eigen::Matrix3d R_pitch = Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()).toRotationMatrix();
+        //     Eigen::Matrix3d R_yaw = Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+        //     Eigen::Matrix3d Rwb = R_yaw * R_pitch * R_roll;
+        //     // get roll, pitch, yaw
+        //     Vec3d euler_before = ekf.GetOrientation().matrix().eulerAngles(2, 1, 0);
+        //     LOG(INFO) << "euler_before = " << euler_before.transpose() * 180 / M_PI;
 
-            SO3 R_biased = ekf.GetOrientation() * SO3(Rwb);
-            ekf.SetOrientation(R_biased);
-            Vec3d euler_after = ekf.GetOrientation().matrix().eulerAngles(2, 1, 0);
-            LOG(INFO) << "euler_after = " << euler_after.transpose() * 180 / M_PI;
-            // R_ = SO3::exp(VecT(1.5, -1.6, 1.9));
-        }
+        //     SO3 R_biased = ekf.GetOrientation() * SO3(Rwb);
+        //     ekf.SetOrientation(R_biased);
+        //     Vec3d euler_after = ekf.GetOrientation().matrix().eulerAngles(2, 1, 0);
+        //     LOG(INFO) << "euler_after = " << euler_after.transpose() * 180 / M_PI;
+        //     // R_ = SO3::exp(VecT(1.5, -1.6, 1.9));
+        // }
         /// Landmarks 处理函数
         ekf.ObserveLandmarks(landmarks);
     })
